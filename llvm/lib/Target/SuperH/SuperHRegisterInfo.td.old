@@ -1,0 +1,59 @@
+//===-- SuperHRegisterInfo.td - SuperH Register defs ---------*- tablegen -*-===//
+//
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
+//
+//===----------------------------------------------------------------------===//
+
+//===----------------------------------------------------------------------===//
+//  Declarations that describe the RISC-W register file
+//===----------------------------------------------------------------------===//
+
+let Namespace = "SuperH" in {
+class SuperHReg<bits<4> Enc, string n, list<string> alt = []> : Register<n> {
+  let HWEncoding{3-0} = Enc;
+  let AltNames = alt;
+}
+} // end Namespace
+
+// Return Values, Caller Saves
+def R0  : SuperHReg<0, "r0", []>, DwarfRegNum<[0]>;
+def R1  : SuperHReg<1, "r1", []>, DwarfRegNum<[1]>;
+
+// Scratch, Caller Saves
+def R2  : SuperHReg<2, "r2", []>, DwarfRegNum<[2]>;
+def R3  : SuperHReg<3, "r3", []>, DwarfRegNum<[3]>;
+
+// Parameter Passing, Caller Saves
+def R4  : SuperHReg<4, "r4", []>, DwarfRegNum<[4]>;
+def R5  : SuperHReg<5, "r5", []>, DwarfRegNum<[5]>;
+def R6  : SuperHReg<6, "r6", []>, DwarfRegNum<[6]>;
+def R7  : SuperHReg<7, "r7", []>, DwarfRegNum<[7]>;
+
+// Callee Saves
+def R8  : SuperHReg<8, "r8", []>, DwarfRegNum<[8]>;
+def R9  : SuperHReg<9, "r9", []>, DwarfRegNum<[9]>;
+def R10 : SuperHReg<10,"r10", []>, DwarfRegNum<[10]>;
+def R11 : SuperHReg<11,"r11", []>, DwarfRegNum<[11]>;
+def R12 : SuperHReg<12,"r12", []>, DwarfRegNum<[12]>;
+def R13 : SuperHReg<13,"r13", []>, DwarfRegNum<[13]>;
+
+// Frame Pointer, Callee Saves
+def R14 : SuperHReg<14,"r14", ["fp"]>, DwarfRegNum<[14]>;
+
+// Stack Pointer, Callee Saves
+def R15 : SuperHReg<15,"r15", ["sp"]>, DwarfRegNum<[15]>;
+
+// The order of registers represents the preferred allocation sequence.
+// Registers are listed in the order caller-save, callee-save, specials.
+def GPR : RegisterClass<"SuperH", [i32], 32, (add
+    (sequence "R%u", 2, 3),
+    (sequence "R%u", 4, 7),
+    (sequence "R%u", 0, 1),
+    (sequence "R%u", 8, 13),
+    (sequence "R%u", 14, 14)
+  )>;
+
+def SP : RegisterClass<"SuperH", [i32], 32, (add R15)>;

@@ -1,0 +1,134 @@
+//=== SuperHInstrFormats.td - SuperH Instruction Formats -----*- tablegen -*-===//
+//
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
+//
+//===----------------------------------------------------------------------===//
+
+//===----------------------------------------------------------------------===//
+//
+//  These instruction format definitions are structured to match the
+//  description in the RISC-V User-Level ISA specification as closely as
+//  possible. For instance, the specification describes instructions with the
+//  MSB (31st bit) on the left and the LSB (0th bit) on the right. This is
+//  reflected in the order of parameters to each instruction class.
+//
+//  One area of divergence is in the description of immediates. The
+//  specification describes immediate encoding in terms of bit-slicing
+//  operations on the logical value represented. The immediate argument to
+//  these instruction formats instead represents the bit sequence that will be
+//  inserted into the instruction. e.g. although JAL's immediate is logically
+//  a 21-bit value (where the LSB is always zero), we describe it as an imm20
+//  to match how it is encoded.
+//
+//===----------------------------------------------------------------------===//
+
+// Format specifies the encoding used by the instruction. This is used by
+// SuperHMCCodeEmitter to determine which form of fixup to use. These
+// definitions must be kept in-sync with SuperHBaseInfo.h.
+class InstFormat<bits<4> value> {
+  bits<4> Value = value;
+}
+
+def InstFormatPseudo : InstFormat<0>;
+def InstFormat0      : InstFormat<1>;
+def InstFormatN      : InstFormat<2>;
+def InstFormatM      : InstFormat<3>;
+def InstFormatNM     : InstFormat<4>;
+def InstFormatMD     : InstFormat<5>;
+def InstFormatND4    : InstFormat<6>;
+def InstFormatNMD    : InstFormat<7>;
+def InstFormatD      : InstFormat<8>;
+def InstFormatD12    : InstFormat<9>;
+def InstFormatND8    : InstFormat<10>;
+def InstFormatI      : InstFormat<11>;
+def InstFormatNI     : InstFormat<12>;
+def InstFormatOther  : InstFormat<13>;
+
+class SuperHOpcode<InstFormat format> {
+  InstFormat Format = format;
+}
+
+// 
+// class SuperHOpcodeNM<bits<4> upper, bits<4> lower> : SuperHOpcode<InstFormatNM> {
+//   bits<4> Upper = upper;
+//   bits<4> Lower = lower;
+// }
+
+// class SuperHOpcodeNI<bits<4> op> : SuperHOpcode<InstFormatNI> {
+//   bits<4> Op = op;
+// }
+
+class SuperHOpcode0<bits<16> op> : SuperHOpcode<InstFormat0> {
+  bits<16> Op = op;
+}
+
+
+class SuperHInst<dag outs, dag ins, string opcodestr, string argstr,
+             list<dag> pattern, InstFormat format>
+    : Instruction {
+  field bits<16> Inst;
+  // SoftFail is a field the disassembler can use to provide a way for
+  // instructions to not match without killing the whole decode process. It is
+  // mainly used for ARM, but Tablegen expects this field to exist or it fails
+  // to build the decode table.
+  field bits<16> SoftFail = 0;
+  let Size = 2;
+
+  let Namespace = "SuperH";
+
+  dag OutOperandList = outs;
+  dag InOperandList = ins;
+  let AsmString = opcodestr # "\t" # argstr;
+  let Pattern = pattern;
+
+  let TSFlags{3-0} = format.Value;
+}
+
+// Pseudo instructions
+class Pseudo<dag outs, dag ins, list<dag> pattern, string opcodestr = "",
+             string argstr = "">
+    : SuperHInst<outs, ins, opcodestr, argstr, pattern, InstFormatPseudo>,
+      Sched<[]> {
+  let isPseudo = 1;
+  let isCodeGenOnly = 1;
+}
+
+// Instruction formats from Table 4.8
+
+class SuperHInstNM<dag outs, dag ins, string argstr, bits<4> upper, bits<4> lower, string opcodestr, list<dag> patterns>
+    : SuperHInst<outs, ins, opcodestr, argstr, patterns, InstFormatNM> {
+  bits<4> nReg;
+  bits<4> mReg;
+
+  let Inst{15-12} = upper;
+  let Inst{11-8} = nReg;
+  let Inst{7-4} = mReg;
+  let Inst{3-0} = lower;
+}
+
+class SuperHInstNM1<bits<4> upper, bits<4> lower, string opcodestr, list<dag> patterns>
+    : SuperHInstNM<(outs GPR:$rn), (ins GPR:$rm), "$rm, $rn", upper, lower, opcodestr, patterns>;
+
+class SuperHInstNM2<bits<4> upper, bits<4> lower, string opcodestr, list<dag> patterns>
+    : SuperHInstNM<(outs GPR:$rn), (ins GPR:$rm, GPR:$rnsrc), "$rm, $rn", upper, lower, opcodestr, patterns>;
+
+class SuperHInstNI<bits<4> op, string opcodestr, SDPatternOperator opnode>
+    : SuperHInst<(outs GPR:$rn), (ins GPR:$rnsrc, i32imm:$imm), 
+                  opcodestr, "$imm, $rn", [( set i32:$rn, (opnode i32:$rnsrc, imm:$imm))], InstFormatNI> {
+  bits<4> dest;
+  bits<8> imm;
+
+  let Inst{15-12} = op;
+  let Inst{11-8} = dest;
+  let Inst{7-0} = imm;
+}
+
+class SuperHInst0<SuperHOpcode0 opcode, dag outs, dag ins,
+              string opcodestr, string argstr, list<dag> pattern>
+    : SuperHInst<outs, ins, opcodestr, argstr, pattern, InstFormat0> {
+
+  let Inst{15-0} = opcode.Op;
+}

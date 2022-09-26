@@ -34,6 +34,7 @@
 #include "Targets/RISCV.h"
 #include "Targets/SPIR.h"
 #include "Targets/Sparc.h"
+#include "Targets/SuperH.h"
 #include "Targets/SystemZ.h"
 #include "Targets/TCE.h"
 #include "Targets/VE.h"
@@ -469,6 +470,10 @@ TargetInfo *AllocateTarget(const llvm::Triple &Triple,
       return new SparcV9TargetInfo(Triple, Opts);
     }
 
+  case llvm::Triple::superh:
+    printf("Allocating SuperHTargetInfo");
+    return new SuperHTargetInfo(Triple, Opts);
+
   case llvm::Triple::systemz:
     switch (os) {
     case llvm::Triple::Linux:
@@ -681,6 +686,7 @@ using namespace clang::targets;
 TargetInfo *
 TargetInfo::CreateTargetInfo(DiagnosticsEngine &Diags,
                              const std::shared_ptr<TargetOptions> &Opts) {
+  printf("Triple: %s\n", Opts->Triple.c_str());
   llvm::Triple Triple(Opts->Triple);
 
   // Construct the target

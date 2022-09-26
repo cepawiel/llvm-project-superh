@@ -1,0 +1,9 @@
+add_llvm_library(LLVMSuperHDesc
+  SuperHMCAsmInfo.cpp
+  SuperHMCTargetDesc.cpp
+  SuperHMCCodeEmitter.cpp
+  SuperHELFStreamer.cpp
+  SuperHAsmBackend.cpp
+  SuperHELFObjectWriter.cpp
+  SuperHInstPrinter.cpp
+)

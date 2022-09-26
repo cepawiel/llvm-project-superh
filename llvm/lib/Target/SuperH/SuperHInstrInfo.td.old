@@ -1,0 +1,129 @@
+//== SuperHInstrInfo.td - Target Description for SuperH Target -*- tablegen -*-=//
+//
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
+//
+//===----------------------------------------------------------------------===//
+//
+// This file contains the SuperH implementation of the TargetInstrInfo class.
+//
+//===----------------------------------------------------------------------===//
+
+//===----------------------------------------------------------------------===//
+// Instruction Pattern Stuff
+//===----------------------------------------------------------------------===//
+
+def simm8  : PatLeaf<(imm), [{ return isInt<8>(N->getSExtValue()); }]>;
+
+//===----------------------------------------------------------------------===//
+// Instruction format superclass
+//===----------------------------------------------------------------------===//
+
+// Procedure return
+def superh_ret : SDNode<"SuperHISD::RTS", SDTNone,
+                       [SDNPHasChain, SDNPOptInGlue, SDNPVariadic]>;
+
+// Procedure calling
+def SDT_CallSeqStart : SDCallSeqStart<[SDTCisVT<0, i32>,
+                                       SDTCisVT<1, i32>]>;
+def SDT_CallSeqEnd   : SDCallSeqEnd<[SDTCisVT<0, i32>,
+                                    SDTCisVT<1, i32>]>;
+
+// These are target-independent nodes, but have target-specific formats.
+def callseq_start : SDNode<"ISD::CALLSEQ_START", SDT_CallSeqStart,
+                           [SDNPHasChain, SDNPOutGlue]>;
+def callseq_end   : SDNode<"ISD::CALLSEQ_END", SDT_CallSeqEnd,
+                           [SDNPHasChain, SDNPOptInGlue, SDNPOutGlue]>;
+
+include "SuperHInstrFormats.td"
+
+let Defs = [R2], Uses = [R2] in {
+def ADJCALLSTACKDOWN : Pseudo<(outs), (ins i32imm:$amt1, i32imm:$amt2),
+                              [(callseq_start timm:$amt1, timm:$amt2)]>;
+def ADJCALLSTACKUP   : Pseudo<(outs), (ins i32imm:$amt1, i32imm:$amt2),
+                              [(callseq_end timm:$amt1, timm:$amt2)]>;
+} // end Defs = [R2], Uses = [R2]
+
+//===----------------------------------------------------------------------===//
+// Describe instructions
+//===----------------------------------------------------------------------===//
+
+/* Arithmetic and logic Register-Register */
+// let hasSideEffects = 0, mayLoad = 0, mayStore = 0 in
+// class ALU_rr<string opcodestr>
+//     : SuperHInstNM<OPC_ADDrr, opcodestr>;
+
+// class PatGprGpr<SDPatternOperator OpNode, SuperHInst Inst>
+//     : Pat<(OpNode GPR:$rs1, GPR:$rs2), (Inst GPR:$rs1, GPR:$rs2)>;
+
+
+/* Arithmetic and logic Register-Immediate */
+// let hasSideEffects = 0, mayLoad = 0, mayStore = 0 in
+// class ALU_ri<string opcodestr>
+//     : SuperHInstNI<OPC_ADDri, opcodestr, []>;
+
+// class PatGprImm<SDPatternOperator OpNode, SuperHInst Inst>
+//     : Pat<(OpNode GPR:$rs1, simm8:$imm), (Inst GPR:$rs1, imm:$imm)>;
+
+
+
+
+
+// http://shared-ptr.com/sh_insns.html
+
+def MOVrr    : SuperHInstNM1<0b0110, 0b0011, "mov", []>, Sched<[WriteIALU, ReadIALU, ReadIALU]>;
+def SWAPBrr  : SuperHInstNM1<0b0110, 0b1000, "swap.b", []>, Sched<[WriteIALU, ReadIALU, ReadIALU]>;
+def SWAPWrr  : SuperHInstNM1<0b0110, 0b1001, "swap.w", []>, Sched<[WriteIALU, ReadIALU, ReadIALU]>;
+
+
+
+def ADDrr   : SuperHInstNM2<0b0011, 0b1100, "add", [( set GPR:$rn, (add GPR:$rm, GPR:$rnsrc))]>, Sched<[WriteIALU, ReadIALU, ReadIALU]>;
+def ADDCrr  : SuperHInstNM2<0b0011, 0b1110, "addc", []>, Sched<[WriteIALU, ReadIALU, ReadIALU]>;
+def ADDVrr  : SuperHInstNM2<0b0011, 0b1110, "addv", []>, Sched<[WriteIALU, ReadIALU, ReadIALU]>;
+def SUBrr   : SuperHInstNM2<0b0011, 0b1000, "sub", [( set GPR:$rn, (sub GPR:$rm, GPR:$rnsrc))]>, Sched<[WriteIALU, ReadIALU, ReadIALU]>;
+def ANDrr   : SuperHInstNM2<0b0010, 0b1000, "and", [( set GPR:$rn, (and GPR:$rm, GPR:$rnsrc))]>, Sched<[WriteIALU, ReadIALU, ReadIALU]>;
+def ORrr    : SuperHInstNM2<0b0010, 0b1011, "or",  [( set GPR:$rn, (or  GPR:$rm, GPR:$rnsrc))]>, Sched<[WriteIALU, ReadIALU, ReadIALU]>;
+def XTRCTrr : SuperHInstNM2<0b0010, 0b1101, "xtrct", []>, Sched<[WriteIALU, ReadIALU, ReadIALU]>;
+
+
+
+def ADDri  : SuperHInstNI<0b0011, "add", add>, Sched<[WriteIALU, ReadIALU, ReadIALU]>;
+
+
+
+def OPC_RTS       : SuperHOpcode0<0b0000000000001011>;
+
+// def : PatGprGpr<add, ADDrr>;
+// def : PatGprImm<add, ADDri>;
+
+/* Procedure calling instructions */
+let hasSideEffects = 0, mayLoad = 0, mayStore = 0 in {
+let isCall = 1 in
+def RTS : SuperHInst0<OPC_RTS, (outs),
+                   (ins), "rts", "", [(superh_ret)]>,
+           Sched<[WriteRTS, ReadRTS]>;
+}
+
+// def : PatGprGpr<rts, RTS>;
+
+// let isReturn = 1, isBarrier = 1, isTerminator = 1 in
+// def PseudoRET : Pseudo<(outs), (ins), [(superh_ret)]>,
+//                 PseudoInstExpansion<(RTS)>;
+
+// def : InstAlias<"ret", (RTS), 4>;
+
+//===----------------------------------------------------------------------===//
+// Non-Instruction Patterns
+//===----------------------------------------------------------------------===//
+
+// // Zero immediate.
+// def : Pat<(i32 0),
+//           (ORrr (i32 G0), (i32 G0))>;
+// Small immediates.
+// def : Pat<(i32 simm8:$val),
+//           (ORri (i32 G0), imm:$val)>;
+// // Arbitrary immediates.
+// def : Pat<(i32 imm:$val),
+//           (ORri (SETHIi (HI22 imm:$val)), (LO10 imm:$val))>;

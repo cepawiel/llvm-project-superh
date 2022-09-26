@@ -1,0 +1,15 @@
+#!/bin/bash
+
+cmake -S llvm -B build -G Ninja \
+	-DLLVM_ENABLE_PROJECTS="clang" \
+	-DLLVM_PARALLEL_LINK_JOBS=10 \
+	-DLLVM_PARALLEL_COMPILE_JOBS=34 \
+	-DLLVM_USE_LINKER="lld" \
+	-DLLVM_TARGETS_TO_BUILD="X86" \
+	-DLLVM_EXPERIMENTAL_TARGETS_TO_BUILD="SuperH" \
+	-DCMAKE_BUILD_TYPE="Debug" \
+	-DLLVM_ENABLE_ASSERTIONS=On 
+
+cd build
+ninja
+cd ../

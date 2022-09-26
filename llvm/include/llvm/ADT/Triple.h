@@ -77,6 +77,7 @@ public:
     sparc,          // Sparc: sparc
     sparcv9,        // Sparcv9: Sparcv9
     sparcel,        // Sparc: (endianness = little). NB: 'Sparcle' is a CPU variant
+    superh,         // SuperH
     systemz,        // SystemZ: s390x
     tce,            // TCE (http://tce.cs.tut.fi/): tce
     tcele,          // TCE little endian (http://tce.cs.tut.fi/): tcele

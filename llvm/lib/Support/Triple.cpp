@@ -72,6 +72,7 @@ StringRef Triple::getArchTypeName(ArchType Kind) {
   case spir:           return "spir";
   case spirv32:        return "spirv32";
   case spirv64:        return "spirv64";
+  case superh:	       return "superh";
   case systemz:        return "s390x";
   case tce:            return "tce";
   case tcele:          return "tcele";
@@ -129,6 +130,8 @@ StringRef Triple::getArchTypePrefix(ArchType Kind) {
   case sparcv9:
   case sparcel:
   case sparc:       return "sparc";
+
+  case superh:      return "superh";
 
   case systemz:     return "s390";
 
@@ -337,6 +340,7 @@ Triple::ArchType Triple::getArchTypeForLLVMName(StringRef Name) {
     .Case("sparc", sparc)
     .Case("sparcel", sparcel)
     .Case("sparcv9", sparcv9)
+    .Case("superh", superh)
     .Case("s390x", systemz)
     .Case("systemz", systemz)
     .Case("tce", tce)
@@ -482,6 +486,7 @@ static Triple::ArchType parseArch(StringRef ArchName) {
     .Case("sparc", Triple::sparc)
     .Case("sparcel", Triple::sparcel)
     .Cases("sparcv9", "sparc64", Triple::sparcv9)
+    .Case("superh", Triple::superh)
     .Case("tce", Triple::tce)
     .Case("tcele", Triple::tcele)
     .Case("xcore", Triple::xcore)
@@ -830,6 +835,7 @@ static Triple::ObjectFormatType getDefaultFormat(const Triple &T) {
   case Triple::sparcv9:
   case Triple::spir64:
   case Triple::spir:
+  case Triple::superh:
   case Triple::tce:
   case Triple::tcele:
   case Triple::thumbeb:
@@ -1404,6 +1410,7 @@ static unsigned getArchPointerBitWidth(llvm::Triple::ArchType Arch) {
   case llvm::Triple::sparcel:
   case llvm::Triple::spir:
   case llvm::Triple::spirv32:
+  case llvm::Triple::superh:
   case llvm::Triple::tce:
   case llvm::Triple::tcele:
   case llvm::Triple::thumb:
@@ -1494,6 +1501,7 @@ Triple Triple::get32BitArchVariant() const {
   case Triple::sparcel:
   case Triple::spir:
   case Triple::spirv32:
+  case Triple::superh:
   case Triple::tce:
   case Triple::tcele:
   case Triple::thumb:
@@ -1548,6 +1556,7 @@ Triple Triple::get64BitArchVariant() const {
   case Triple::r600:
   case Triple::shave:
   case Triple::sparcel:
+  case Triple::superh:
   case Triple::tce:
   case Triple::tcele:
   case Triple::xcore:
