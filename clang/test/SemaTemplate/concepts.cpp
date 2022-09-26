@@ -257,6 +257,12 @@ C auto **&j2 = g();  // expected-error {{deduced type 'int' does not satisfy 'C'
 C auto **&&j3 = g(); // expected-error {{deduced type 'int' does not satisfy 'C'}}
 }
 
+namespace GH55567 {
+template<class, template <class> class> concept C = true;
+template <class> struct S {};
+void f(C<GH55567::S> auto);
+} // namespace GH55567
+
 namespace SubConstraintChecks {
 template <typename T>
 concept TrueConstraint = true;
@@ -639,4 +645,66 @@ constexpr bool test() {
   return true;
 }
 } // namespace InlineFriendOperator
+
+namespace ClassTemplateInstantiation {
+struct Type;
+template < typename A, typename B, typename C>
+  concept ConstraintF = false; // #ConstraintF
+template < typename A, typename B, typename C>
+  concept ConstraintT = true;
+
+template < typename T > struct Parent {
+  template < typename U, ConstraintT<T, U> > struct ChildT{};
+  ChildT<Type, Type> CauseInstT;
+  template < typename U, ConstraintF<T, U> > struct ChildF{};// #ChildF
+  ChildF<Type, Type> CauseInstF; //#CauseInstF
+};
+
+// expected-error@#CauseInstF{{constraints not satisfied for class template}}
+// expected-note@+3{{in instantiation of template class}}
+// expected-note@#ChildF{{evaluated to false}}
+// expected-note@#ConstraintF{{because 'false' evaluated to false}}
+Parent<int> Inst;
+} // namespace ClassTemplateInstantiation
+
+namespace SelfFriend {
+  template<class T>
+  concept Constraint = requires (T i) { (*i); };
+  template<class T>
+  concept Constraint2 = requires (T i) { (*i); };
+
+  template<Constraint T>
+  struct Iterator {
+    template <Constraint>
+    friend class Iterator;
+    void operator*();
+  };
+
+  template<Constraint T> // #ITER_BAD
+  struct IteratorBad {
+    template <Constraint2>//#ITER_BAD_FRIEND
+    friend class IteratorBad;
+    void operator*();
+  };
+
+  Iterator<int*> I;
+  Iterator<char*> I2;
+  IteratorBad<int*> I3; // expected-error@#ITER_BAD_FRIEND{{constraint differs}}
+                        // expected-note@-1{{in instantiation of template class}}
+                        // expected-note@#ITER_BAD{{previous template declaration}}
+} // namespace SelfFriend
+
+
+namespace ConstrainedMemberVarTemplate {
+template <long Size> struct Container {
+  static constexpr long arity = Size;
+  template <typename U>
+  requires(sizeof(U) == arity) // #CMVT_REQ
+  using var_templ = int;
+};
+Container<4>::var_templ<int> inst;
+Container<5>::var_templ<int> inst_fail;
+// expected-error@-1{{constraints not satisfied for alias template 'var_templ'}}
+// expected-note@#CMVT_REQ{{because 'sizeof(int) == arity' (4 == 5) evaluated to false}}
+} // namespace ConstrainedMemberVarTemplate 
 

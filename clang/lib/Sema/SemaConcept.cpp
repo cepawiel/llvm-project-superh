@@ -10,6 +10,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "TreeTransform.h"
 #include "clang/Sema/SemaConcept.h"
 #include "clang/Sema/Sema.h"
 #include "clang/Sema/SemaInternal.h"
@@ -204,6 +205,30 @@ calculateConstraintSatisfaction(Sema &S, const Expr *ConstraintExpr,
   if (!SubstitutedAtomicExpr.isUsable())
     // Evaluator has decided satisfaction without yielding an expression.
     return ExprEmpty();
+
+  // We don't have the ability to evaluate this, since it contains a
+  // RecoveryExpr, so we want to fail overload resolution.  Otherwise,
+  // we'd potentially pick up a different overload, and cause confusing
+  // diagnostics. SO, add a failure detail that will cause us to make this
+  // overload set not viable.
+  if (SubstitutedAtomicExpr.get()->containsErrors()) {
+    Satisfaction.IsSatisfied = false;
+    Satisfaction.ContainsErrors = true;
+
+    PartialDiagnostic Msg = S.PDiag(diag::note_constraint_references_error);
+    SmallString<128> DiagString;
+    DiagString = ": ";
+    Msg.EmitToString(S.getDiagnostics(), DiagString);
+    unsigned MessageSize = DiagString.size();
+    char *Mem = new (S.Context) char[MessageSize];
+    memcpy(Mem, DiagString.c_str(), MessageSize);
+    Satisfaction.Details.emplace_back(
+        ConstraintExpr,
+        new (S.Context) ConstraintSatisfaction::SubstitutionDiagnostic{
+            SubstitutedAtomicExpr.get()->getBeginLoc(),
+            StringRef(Mem, MessageSize)});
+    return SubstitutedAtomicExpr;
+  }
 
   EnterExpressionEvaluationContext ConstantEvaluated(
       S, Sema::ExpressionEvaluationContext::ConstantEvaluated);
@@ -539,6 +564,95 @@ bool Sema::CheckFunctionConstraints(const FunctionDecl *FD,
   assert(Converted.size() <= 1 && "Got more expressions converted?");
   if (!Converted.empty() && Converted[0] != nullptr)
     const_cast<FunctionDecl *>(FD)->setTrailingRequiresClause(Converted[0]);
+  return false;
+}
+
+
+// Figure out the to-translation-unit depth for this function declaration for
+// the purpose of seeing if they differ by constraints. This isn't the same as
+// getTemplateDepth, because it includes already instantiated parents.
+static unsigned CalculateTemplateDepthForConstraints(Sema &S,
+                                                     const NamedDecl *ND) {
+  MultiLevelTemplateArgumentList MLTAL = S.getTemplateInstantiationArgs(
+      ND, nullptr, /*RelativeToPrimary*/ true,
+      /*Pattern*/ nullptr,
+      /*LookBeyondLambda*/ true, /*IncludeContainingStruct*/ true);
+  return MLTAL.getNumSubstitutedLevels();
+}
+
+namespace {
+  class AdjustConstraintDepth : public TreeTransform<AdjustConstraintDepth> {
+  unsigned TemplateDepth = 0;
+  public:
+  using inherited = TreeTransform<AdjustConstraintDepth>;
+  AdjustConstraintDepth(Sema &SemaRef, unsigned TemplateDepth)
+      : inherited(SemaRef), TemplateDepth(TemplateDepth) {}
+  QualType TransformTemplateTypeParmType(TypeLocBuilder &TLB,
+                                         TemplateTypeParmTypeLoc TL) {
+    const TemplateTypeParmType *T = TL.getTypePtr();
+
+    TemplateTypeParmDecl *NewTTPDecl = nullptr;
+    if (TemplateTypeParmDecl *OldTTPDecl = T->getDecl())
+      NewTTPDecl = cast_or_null<TemplateTypeParmDecl>(
+          TransformDecl(TL.getNameLoc(), OldTTPDecl));
+
+    QualType Result = getSema().Context.getTemplateTypeParmType(
+        T->getDepth() + TemplateDepth, T->getIndex(), T->isParameterPack(),
+        NewTTPDecl);
+    TemplateTypeParmTypeLoc NewTL = TLB.push<TemplateTypeParmTypeLoc>(Result);
+    NewTL.setNameLoc(TL.getNameLoc());
+    return Result;
+  }
+  };
+} // namespace
+
+bool Sema::AreConstraintExpressionsEqual(const NamedDecl *Old,
+                                         const Expr *OldConstr,
+                                         const NamedDecl *New,
+                                         const Expr *NewConstr) {
+  if (Old && New && Old != New) {
+    unsigned Depth1 = CalculateTemplateDepthForConstraints(
+        *this, Old);
+    unsigned Depth2 = CalculateTemplateDepthForConstraints(
+        *this, New);
+
+    // Adjust the 'shallowest' verison of this to increase the depth to match
+    // the 'other'.
+    if (Depth2 > Depth1) {
+      OldConstr = AdjustConstraintDepth(*this, Depth2 - Depth1)
+                      .TransformExpr(const_cast<Expr *>(OldConstr))
+                      .get();
+    } else if (Depth1 > Depth2) {
+      NewConstr = AdjustConstraintDepth(*this, Depth1 - Depth2)
+                      .TransformExpr(const_cast<Expr *>(NewConstr))
+                      .get();
+    }
+  }
+
+  llvm::FoldingSetNodeID ID1, ID2;
+  OldConstr->Profile(ID1, Context, /*Canonical=*/true);
+  NewConstr->Profile(ID2, Context, /*Canonical=*/true);
+  return ID1 == ID2;
+}
+
+bool Sema::FriendConstraintsDependOnEnclosingTemplate(const FunctionDecl *FD) {
+  assert(FD->getFriendObjectKind() && "Must be a friend!");
+
+  // The logic for non-templates is handled in ASTContext::isSameEntity, so we
+  // don't have to bother checking 'DependsOnEnclosingTemplate' for a
+  // non-function-template.
+  assert(FD->getDescribedFunctionTemplate() &&
+         "Non-function templates don't need to be checked");
+
+  SmallVector<const Expr *, 3> ACs;
+  FD->getDescribedFunctionTemplate()->getAssociatedConstraints(ACs);
+
+  unsigned OldTemplateDepth = CalculateTemplateDepthForConstraints(*this, FD);
+  for (const Expr *Constraint : ACs)
+    if (ConstraintExpressionDependsOnEnclosingTemplate(OldTemplateDepth,
+                                                       Constraint))
+      return true;
+
   return false;
 }
 

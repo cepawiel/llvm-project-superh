@@ -270,6 +270,13 @@ def StringElementsAttrOp : TEST_Op<"string_elements_attr"> {
   );
 }
 
+def TypedAttrOp : TEST_Op<"typed_attr"> {
+  let arguments = (ins TypeAttr:$type, AnyAttr:$attr);
+  let assemblyFormat = [{
+    attr-dict $type `=` custom<AttrElideType>(ref($type), $attr)
+  }];
+}
+
 def DenseArrayAttrOp : TEST_Op<"dense_array_attr"> {
   let arguments = (ins
     DenseBoolArrayAttr:$i1attr,
@@ -722,15 +729,17 @@ def AttrSizedOperandOp : TEST_Op<"attr_sized_operands",
 
 def AttrSizedResultOp : TEST_Op<"attr_sized_results",
                                 [AttrSizedResultSegments]> {
-  let arguments = (ins
-    DenseI32ArrayAttr:$result_segment_sizes
-  );
   let results = (outs
     Variadic<I32>:$a,
     Variadic<I32>:$b,
     I32:$c,
     Variadic<I32>:$d
   );
+}
+
+def AttrSizedResultCompileTestOp : TEST_Op<"attr_sized_results_compile_test",
+                                           [AttrSizedResultSegments]> {
+  let results = (outs Variadic<I32>:$a, I32:$b, Optional<I32>:$c);
 }
 
 // This is used to test that the fallback for a custom op's parser and printer
@@ -786,6 +795,18 @@ def OIListAllowedLiteral : TEST_Op<"oilist_allowed_literal"> {
   let assemblyFormat = [{
     oilist( `foo` | `bar` ) `buzz` attr-dict
   }];
+}
+
+def TestEllipsisOp : TEST_Op<"ellipsis"> {
+  let arguments = (ins Variadic<AnyType>:$operands, UnitAttr:$variadic);
+  let assemblyFormat = [{
+    `(` $operands (`...` $variadic^)? `)` attr-dict `:` type($operands) `...`
+  }];
+}
+
+def ElseAnchorOp : TEST_Op<"else_anchor"> {
+  let arguments = (ins Optional<AnyType>:$a);
+  let assemblyFormat = "`(` (`?`) : (`` $a^ `:` type($a))? `)` attr-dict";
 }
 
 // This is used to test encoding of a string attribute into an SSA name of a
@@ -2128,7 +2149,7 @@ def FormatInferVariadicTypeFromNonVariadic
               [SameOperandsAndResultType]> {
   let arguments = (ins Variadic<AnyType>:$args);
   let results = (outs AnyType:$result);
-  let assemblyFormat = "$args attr-dict `:` type($result)";
+  let assemblyFormat = "operands attr-dict `:` type($result)";
 }
 
 def FormatOptionalUnitAttr : TEST_Op<"format_optional_unit_attribute"> {
@@ -2466,6 +2487,17 @@ def FormatInferTypeVariadicOperandsOp
 }
 
 //===----------------------------------------------------------------------===//
+// Test ArrayOfAttr
+//===----------------------------------------------------------------------===//
+
+// Embed the array attributes directly in the assembly format for a nice syntax.
+def ArrayOfAttrOp : TEST_Op<"array_of_attr_op"> {
+  let arguments = (ins TestArrayOfUglyAttrs:$a, TestArrayOfInts:$b,
+                       TestArrayOfEnums:$c);
+  let assemblyFormat = "`a` `=` $a `,` `b` `=` $b `,` `c` `=` $c attr-dict";
+}
+
+//===----------------------------------------------------------------------===//
 // Test SideEffects
 //===----------------------------------------------------------------------===//
 
@@ -2741,7 +2773,8 @@ def TestLinalgConvOpNotLinalgOp : TEST_Op<"conv_op_not_linalg_op", [
 
 def TestLinalgConvOp :
   TEST_Op<"linalg_conv_op", [AttrSizedOperandSegments, SingleBlock,
-      LinalgStructuredInterface, LinalgConvolutionOpInterface]> {
+      DestinationStyleOpInterface, LinalgStructuredInterface,
+      LinalgConvolutionOpInterface]> {
 
   let arguments = (ins Variadic<AnyType>:$inputs,
     Variadic<AnyType>:$outputs);
@@ -2799,7 +2832,8 @@ def TestLinalgFillOpNotLinalgOp : TEST_Op<"fill_op_not_linalg_op", [
 
 def TestLinalgFillOp :
   TEST_Op<"linalg_fill_op", [AttrSizedOperandSegments, SingleBlock,
-      LinalgStructuredInterface, LinalgFillOpInterface]> {
+      DestinationStyleOpInterface, LinalgStructuredInterface,
+      LinalgFillOpInterface]> {
 
   let arguments = (ins Variadic<AnyType>:$inputs,
     Variadic<AnyType>:$outputs);

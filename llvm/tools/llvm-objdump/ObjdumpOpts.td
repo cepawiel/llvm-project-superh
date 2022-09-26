@@ -153,6 +153,10 @@ def : Flag<["--"], "headers">, Alias<section_headers>,
 def : Flag<["-"], "h">, Alias<section_headers>,
   HelpText<"Alias for --section-headers">;
 
+def show_all_symbols : Flag<["--"], "show-all-symbols">,
+  HelpText<"Show all symbols during disassembly, even if multiple "
+           "symbols are defined at the same location">;
+
 def show_lma : Flag<["--"], "show-lma">,
   HelpText<"Display LMA column when dumping ELF section headers">;
 
@@ -303,7 +307,7 @@ def chained_fixups : Flag<["--"], "chained-fixups">,
   HelpText<"Print chained fixup information (requires --macho)">,
   Group<grp_mach_o>;
 
-def dyld_info : Flag<["--"], "dyld_info">,
+def dyld_info : Flag<["--"], "dyld-info">,
   HelpText<"Print bind and rebase information used by dyld to resolve "
            "external references in a final linked binary "
            "(requires --macho)">,

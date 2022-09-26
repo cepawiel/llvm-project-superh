@@ -25,9 +25,9 @@
 #include "lldb/API/SBValue.h"
 #include "lldb/Breakpoint/StoppointCallbackContext.h"
 #include "lldb/Breakpoint/WatchpointOptions.h"
-#include "lldb/Core/Communication.h"
 #include "lldb/Core/Debugger.h"
 #include "lldb/Core/PluginManager.h"
+#include "lldb/Core/ThreadedCommunication.h"
 #include "lldb/Core/ValueObject.h"
 #include "lldb/DataFormatters/TypeSummary.h"
 #include "lldb/Host/FileSystem.h"
@@ -96,7 +96,7 @@ public:
     // Python's readline is incompatible with libedit being linked into lldb.
     // Provide a patched version local to the embedded interpreter.
     bool ReadlinePatched = false;
-    for (auto *p = PyImport_Inittab; p->name != NULL; p++) {
+    for (auto *p = PyImport_Inittab; p->name != nullptr; p++) {
       if (strcmp(p->name, "readline") == 0) {
         p->initfunc = initlldb_readline;
         break;
@@ -1259,8 +1259,6 @@ void ScriptInterpreterPythonImpl::SetWatchpointCommandCallback(
     wp_options->SetCallback(
         ScriptInterpreterPythonImpl::WatchpointCallbackFunction, baton_sp);
   }
-
-  return;
 }
 
 Status ScriptInterpreterPythonImpl::ExportFunctionDefinitionToInterpreter(

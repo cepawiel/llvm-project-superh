@@ -13,7 +13,7 @@
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "llvm/ADT/MapVector.h"
-#include "llvm/ADT/SetVector.h"
+#include "llvm/ADT/StringSet.h"
 
 namespace mlir {
 class AffineExpr;
@@ -44,6 +44,12 @@ bool isElementwise(LinalgOp op);
 /// Check if `permutation` is a permutation of the range
 /// `[0, permutation.size())`.
 bool isPermutation(ArrayRef<int64_t> permutation);
+
+/// Check if `attr` has "parallel" iterator type semantics.
+bool isParallelIterator(Attribute attr);
+
+/// Check if `attr` has "reduction" iterator type semantics.
+bool isReductionIterator(Attribute attr);
 
 /// Helper function that creates a memref::DimOp or tensor::DimOp depending on
 /// the type of `source`.
@@ -92,25 +98,6 @@ void getUpperBoundForIndex(Value value, AffineMap &boundMap,
 /// getConstantUpperBoundForIndex(%1) returns 42
 /// (boundsMap = affine.map<() -> (42)>)
 FailureOr<int64_t> getConstantUpperBoundForIndex(Value value);
-
-/// Create an ExtractSliceOp and, if `source` is defined by an ExtractSliceOp,
-/// fold it by adding the offsets.
-///
-/// Example:
-/// ```
-/// %0 = tensor.extract_slice %arg0[3, 4][3, 32][1, 1] : tensor<64x64xf32> to
-///                                                        tensor<3x32xf32>
-/// %1 = tensor.extract_slice %0[0, 5][3, 4][1, 1] : tensor<3x32xf32> to
-///                                                    tensor<3x4xf32>
-/// ```
-/// folds into:
-/// ```
-/// %1 = tensor.extract_slice %arg0[3, 9][3, 4][1, 1] : tensor<64x64xf32> to
-///                                                       tensor<3x4xf32>
-/// ```
-tensor::ExtractSliceOp makeComposedExtractSliceOp(
-    OpBuilder &b, Location loc, Value source, ArrayRef<OpFoldResult> offsets,
-    ArrayRef<OpFoldResult> sizes, ArrayRef<OpFoldResult> strides);
 
 /// Create a tensor::PadOp that pads `source` to the size of the statically
 /// sized `type` whose static sizes are assumed to be greater than the dynamic
@@ -205,13 +192,6 @@ SmallVector<Type> getTensorOutputTypes(LinalgOp op, ValueRange operands);
 SmallVector<Value> insertSlicesBack(OpBuilder &builder, Location loc,
                                     LinalgOp op, ValueRange operands,
                                     ValueRange results);
-
-/// Turns an OpFoldResult into a value, creating an index-typed constant if
-/// necessary.
-Value materializeOpFoldResult(ImplicitLocOpBuilder &builder,
-                              OpFoldResult opFoldResult);
-Value materializeOpFoldResult(OpBuilder &b, Location loc,
-                              OpFoldResult opFoldResult);
 
 /// A struct containg offsets-sizes-strides arguments of the tiled shape.
 struct SliceParameters {
@@ -514,6 +494,23 @@ struct GenerateLoopNest {
                        bodyBuilderFn,
                    ArrayRef<linalg::ProcInfo> procInfo = {});
 };
+
+/// Returns an attribute list that excludes pre-defined attributes.
+template <typename OpTy>
+SmallVector<NamedAttribute> getPrunedAttributeList(OpTy op) {
+  llvm::StringSet<> elidedAttrs;
+  elidedAttrs.insert(op.getAttributeNames().begin(),
+                     op.getAttributeNames().end());
+  if (isa<linalg::LinalgOp>(op.getOperation()))
+    elidedAttrs.insert(LinalgDialect::kMemoizedIndexingMapsAttrName);
+  SmallVector<NamedAttribute> attrs;
+  for (auto attr : op->getAttrs()) {
+    if (elidedAttrs.count(attr.getName()))
+      continue;
+    attrs.push_back(attr);
+  }
+  return attrs;
+}
 
 } // namespace linalg
 } // namespace mlir

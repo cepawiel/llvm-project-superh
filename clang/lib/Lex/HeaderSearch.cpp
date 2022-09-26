@@ -1522,14 +1522,14 @@ bool HeaderSearch::hasModuleMap(StringRef FileName,
 }
 
 ModuleMap::KnownHeader
-HeaderSearch::findModuleForHeader(const FileEntry *File,
-                                  bool AllowTextual) const {
+HeaderSearch::findModuleForHeader(const FileEntry *File, bool AllowTextual,
+                                  bool AllowExcluded) const {
   if (ExternalSource) {
     // Make sure the external source has handled header info about this file,
     // which includes whether the file is part of a module.
     (void)getExistingFileInfo(File);
   }
-  return ModMap.findModuleForHeader(File, AllowTextual);
+  return ModMap.findModuleForHeader(File, AllowTextual, AllowExcluded);
 }
 
 ArrayRef<ModuleMap::KnownHeader>
@@ -1563,6 +1563,8 @@ static bool suggestModule(HeaderSearch &HS, const FileEntry *File,
           *SuggestedModule = ModuleMap::KnownHeader();
         return true;
       }
+      // TODO: Add this module (or just its module map file) into something like
+      // `RequestingModule->AffectingModules`.
       return false;
     }
   }

@@ -165,15 +165,13 @@ basic_ostream<wchar_t, traits>& operator<<(basic_ostream<wchar_t, traits>&, cons
 
 #include <__assert> // all public C++ headers provide the assertion handler
 #include <__config>
+#include <__memory/unique_ptr.h>
 #include <bitset>
 #include <ios>
 #include <locale>
+#include <new>
 #include <streambuf>
 #include <version>
-
-#ifndef _LIBCPP_REMOVE_TRANSITIVE_INCLUDES
-#  include <iterator>
-#endif
 
 #if !defined(_LIBCPP_HAS_NO_PRAGMA_SYSTEM_HEADER)
 #  pragma GCC system_header
@@ -197,7 +195,7 @@ public:
     inline _LIBCPP_HIDE_FROM_ABI_AFTER_V1
     explicit basic_ostream(basic_streambuf<char_type, traits_type>* __sb)
     { this->init(__sb); }
-    virtual ~basic_ostream();
+    ~basic_ostream() override;
 protected:
     inline _LIBCPP_INLINE_VISIBILITY
     basic_ostream(basic_ostream&& __rhs);
@@ -1188,5 +1186,9 @@ extern template class _LIBCPP_EXTERN_TEMPLATE_TYPE_VIS basic_ostream<wchar_t>;
 #endif
 
 _LIBCPP_END_NAMESPACE_STD
+
+#if !defined(_LIBCPP_REMOVE_TRANSITIVE_INCLUDES) && _LIBCPP_STD_VER <= 20
+#  include <iterator>
+#endif
 
 #endif // _LIBCPP_OSTREAM

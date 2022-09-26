@@ -69,7 +69,6 @@
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/ScopeExit.h"
 #include "llvm/ADT/Sequence.h"
-#include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/SmallVector.h"
@@ -126,6 +125,7 @@
 #include <cstdlib>
 #include <map>
 #include <memory>
+#include <numeric>
 #include <tuple>
 #include <utility>
 #include <vector>
@@ -8086,12 +8086,12 @@ unsigned ScalarEvolution::getSmallConstantTripMultiple(const Loop *L) {
   SmallVector<BasicBlock *, 8> ExitingBlocks;
   L->getExitingBlocks(ExitingBlocks);
 
-  Optional<unsigned> Res = None;
+  Optional<unsigned> Res;
   for (auto *ExitingBB : ExitingBlocks) {
     unsigned Multiple = getSmallConstantTripMultiple(L, ExitingBB);
     if (!Res)
       Res = Multiple;
-    Res = (unsigned)GreatestCommonDivisor64(*Res, Multiple);
+    Res = (unsigned)std::gcd(*Res, Multiple);
   }
   return Res.value_or(1);
 }
@@ -8382,9 +8382,7 @@ void ScalarEvolution::forgetValue(Value *V) {
   forgetMemoizedResults(ToForget);
 }
 
-void ScalarEvolution::forgetLoopDispositions(const Loop *L) {
-  LoopDispositions.clear();
-}
+void ScalarEvolution::forgetLoopDispositions() { LoopDispositions.clear(); }
 
 /// Get the exact loop backedge taken count considering all loop exits. A
 /// computable result can only be returned for loops with all exiting blocks
@@ -10049,7 +10047,7 @@ SolveQuadraticAddRecRange(const SCEVAddRecExpr *AddRec,
                       << Bound << " (before multiplying by " << M << ")\n");
     Bound *= M; // The quadratic equation multiplier.
 
-    Optional<APInt> SO = None;
+    Optional<APInt> SO;
     if (BitWidth > 1) {
       LLVM_DEBUG(dbgs() << "SolveQuadraticAddRecRange: solving for "
                            "signed overflow\n");
@@ -10809,7 +10807,11 @@ ScalarEvolution::getLoopInvariantPredicate(ICmpInst::Predicate Pred,
   case ICmpInst::ICMP_ULT: {
     assert(ArLHS->hasNoUnsignedWrap() && "Is a requirement of monotonicity!");
     // Given preconditions
-    // (1) ArLHS does not cross 0 (due to NoUnsignedWrap)
+    // (1) ArLHS does not cross the border of positive and negative parts of
+    //     range because of:
+    //     - Positive step; (TODO: lift this limitation)
+    //     - nuw - does not cross zero boundary;
+    //     - nsw - does not cross SINT_MAX boundary;
     // (2) ArLHS <s RHS
     // (3) RHS >=s 0
     // we can replace the loop variant ArLHS <u RHS condition with loop
@@ -10823,7 +10825,9 @@ ScalarEvolution::getLoopInvariantPredicate(ICmpInst::Predicate Pred,
     // All together it means that ArLHS <u RHS <=> Start(ArLHS) >=s 0.
     // We can strengthen this to Start(ArLHS) <u RHS.
     auto SignFlippedPred = ICmpInst::getFlippedSignednessPredicate(Pred);
-    if (isKnownNonNegative(RHS) &&
+    if (ArLHS->hasNoSignedWrap() && ArLHS->isAffine() &&
+        isKnownPositive(ArLHS->getStepRecurrence(*this)) &&
+        isKnownNonNegative(RHS) &&
         isKnownPredicateAt(SignFlippedPred, ArLHS, RHS, CtxI))
       return ScalarEvolution::LoopInvariantPredicate(Pred, ArLHS->getStart(),
                                                      RHS);
@@ -13964,6 +13968,27 @@ void ScalarEvolution::verify() const {
   };
   VerifyBECountUsers(/* Predicated */ false);
   VerifyBECountUsers(/* Predicated */ true);
+
+  // Verify intergity of loop disposition cache.
+  for (const auto &It : LoopDispositions) {
+    const SCEV *S = It.first;
+    auto &Values = It.second;
+    for (auto &V : Values) {
+      auto CachedDisposition = V.getInt();
+      const auto *Loop = V.getPointer();
+      // TODO: Make sure LoopDispositions contains no invalid loops.
+      if (!ValidLoops.contains(Loop))
+        continue;
+      const auto RecomputedDisposition = SE2.getLoopDisposition(S, Loop);
+      if (CachedDisposition != RecomputedDisposition) {
+        dbgs() << "Cached disposition of " << *S << " for loop " << *Loop
+               << " is incorrect: cached "
+               << loopDispositionToStr(CachedDisposition) << ", actual "
+               << loopDispositionToStr(RecomputedDisposition) << "\n";
+        std::abort();
+      }
+    }
+  }
 }
 
 bool ScalarEvolution::invalidate(

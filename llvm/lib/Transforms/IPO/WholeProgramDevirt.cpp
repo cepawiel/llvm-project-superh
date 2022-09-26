@@ -1709,8 +1709,8 @@ bool DevirtModule::tryVirtualConstProp(
   // rather than using function attributes to perform local optimization.
   for (VirtualCallTarget &Target : TargetsForSlot) {
     if (Target.Fn->isDeclaration() ||
-        computeFunctionBodyMemoryAccess(*Target.Fn, AARGetter(*Target.Fn)) !=
-            FMRB_DoesNotAccessMemory ||
+        !computeFunctionBodyMemoryAccess(*Target.Fn, AARGetter(*Target.Fn))
+             .doesNotAccessMemory() ||
         Target.Fn->arg_empty() || !Target.Fn->arg_begin()->use_empty() ||
         Target.Fn->getReturnType() != RetType)
       return false;
@@ -1875,7 +1875,7 @@ void DevirtModule::scanTypeTestUsers(
 
     auto RemoveTypeTestAssumes = [&]() {
       // We no longer need the assumes or the type test.
-      for (auto Assume : Assumes)
+      for (auto *Assume : Assumes)
         Assume->eraseFromParent();
       // We can't use RecursivelyDeleteTriviallyDeadInstructions here because we
       // may use the vtable argument later.
@@ -2265,10 +2265,10 @@ bool DevirtModule::run() {
     if (ExportSummary && isa<MDString>(S.first.TypeID)) {
       auto GUID =
           GlobalValue::getGUID(cast<MDString>(S.first.TypeID)->getString());
-      for (auto FS : S.second.CSInfo.SummaryTypeCheckedLoadUsers)
+      for (auto *FS : S.second.CSInfo.SummaryTypeCheckedLoadUsers)
         FS->addTypeTest(GUID);
       for (auto &CCS : S.second.ConstCSInfo)
-        for (auto FS : CCS.second.SummaryTypeCheckedLoadUsers)
+        for (auto *FS : CCS.second.SummaryTypeCheckedLoadUsers)
           FS->addTypeTest(GUID);
     }
   }
@@ -2311,6 +2311,13 @@ void DevirtIndex::run() {
   DenseMap<GlobalValue::GUID, std::vector<StringRef>> NameByGUID;
   for (const auto &P : ExportSummary.typeIdCompatibleVtableMap()) {
     NameByGUID[GlobalValue::getGUID(P.first)].push_back(P.first);
+    // Create the type id summary resolution regardlness of whether we can
+    // devirtualize, so that lower type tests knows the type id is used on
+    // a global and not Unsat. We do this here rather than in the loop over the
+    // CallSlots, since that handling will only see type tests that directly
+    // feed assumes, and we would miss any that aren't currently handled by WPD
+    // (such as type tests that feed assumes via phis).
+    ExportSummary.getOrInsertTypeIdSummary(P.first);
   }
 
   // Collect information from summary about which calls to try to devirtualize.
@@ -2358,12 +2365,11 @@ void DevirtIndex::run() {
     std::vector<ValueInfo> TargetsForSlot;
     auto TidSummary = ExportSummary.getTypeIdCompatibleVtableSummary(S.first.TypeID);
     assert(TidSummary);
-    // Create the type id summary resolution regardlness of whether we can
-    // devirtualize, so that lower type tests knows the type id is used on
-    // a global and not Unsat.
+    // The type id summary would have been created while building the NameByGUID
+    // map earlier.
     WholeProgramDevirtResolution *Res =
-        &ExportSummary.getOrInsertTypeIdSummary(S.first.TypeID)
-             .WPDRes[S.first.ByteOffset];
+        &ExportSummary.getTypeIdSummary(S.first.TypeID)
+             ->WPDRes[S.first.ByteOffset];
     if (tryFindVirtualCallTargets(TargetsForSlot, *TidSummary,
                                   S.first.ByteOffset)) {
 

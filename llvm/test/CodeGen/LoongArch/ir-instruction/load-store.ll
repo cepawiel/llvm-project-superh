@@ -11,18 +11,18 @@ define i32 @load_store_global() nounwind {
 ; ALL-LABEL:      load_store_global:
 ; ALL:            # %bb.0:
 
-; LA32NOPIC-NEXT:   pcalau12i $a0, G
-; LA32NOPIC-NEXT:   addi.w $a1, $a0, G
-; LA32PIC-NEXT:     pcalau12i $a0, .LG$local
-; LA32PIC-NEXT:     addi.w $a1, $a0, .LG$local
+; LA32NOPIC-NEXT:   pcalau12i $a0, %pc_hi20(G)
+; LA32NOPIC-NEXT:   addi.w $a1, $a0, %pc_lo12(G)
+; LA32PIC-NEXT:     pcalau12i $a0, %pc_hi20(.LG$local)
+; LA32PIC-NEXT:     addi.w $a1, $a0, %pc_lo12(.LG$local)
 ; LA32-NEXT:        ld.w $a0, $a1, 0
 ; LA32-NEXT:        addi.w $a0, $a0, 1
 ; LA32-NEXT:        st.w $a0, $a1, 0
 
-; LA64NOPIC-NEXT:   pcalau12i $a0, G
-; LA64NOPIC-NEXT:   addi.d $a1, $a0, G
-; LA64PIC-NEXT:     pcalau12i $a0, .LG$local
-; LA64PIC-NEXT:     addi.d $a1, $a0, .LG$local
+; LA64NOPIC-NEXT:   pcalau12i $a0, %pc_hi20(G)
+; LA64NOPIC-NEXT:   addi.d $a1, $a0, %pc_lo12(G)
+; LA64PIC-NEXT:     pcalau12i $a0, %pc_hi20(.LG$local)
+; LA64PIC-NEXT:     addi.d $a1, $a0, %pc_lo12(.LG$local)
 ; LA64-NEXT:        ld.w $a0, $a1, 0
 ; LA64-NEXT:        addi.d $a0, $a0, 1
 ; LA64-NEXT:        st.w $a0, $a1, 0
@@ -39,10 +39,10 @@ define i32 @load_store_global_array(i32 %a) nounwind {
 ; ALL-LABEL: load_store_global_array:
 ; ALL:       # %bb.0:
 
-; LA32NOPIC-NEXT:   pcalau12i $a1, arr
-; LA32NOPIC-NEXT:   addi.w $a2, $a1, arr
-; LA32PIC-NEXT:     pcalau12i $a1, .Larr$local
-; LA32PIC-NEXT:     addi.w $a2, $a1, .Larr$local
+; LA32NOPIC-NEXT:   pcalau12i $a1, %pc_hi20(arr)
+; LA32NOPIC-NEXT:   addi.w $a2, $a1, %pc_lo12(arr)
+; LA32PIC-NEXT:     pcalau12i $a1, %pc_hi20(.Larr$local)
+; LA32PIC-NEXT:     addi.w $a2, $a1, %pc_lo12(.Larr$local)
 ; LA32-NEXT:        ld.w $a1, $a2, 0
 ; LA32-NEXT:        st.w $a0, $a2, 0
 ; LA32NOPIC-NEXT:   ld.w $a3, $a2, 36
@@ -50,10 +50,10 @@ define i32 @load_store_global_array(i32 %a) nounwind {
 ; LA32PIC-NEXT:     ld.w $a3, $a2, 36
 ; LA32PIC-NEXT:     st.w $a0, $a2, 36
 
-; LA64NOPIC-NEXT:   pcalau12i $a1, arr
-; LA64NOPIC-NEXT:   addi.d $a2, $a1, arr
-; LA64PIC-NEXT:     pcalau12i $a1, .Larr$local
-; LA64PIC-NEXT:     addi.d $a2, $a1, .Larr$local
+; LA64NOPIC-NEXT:   pcalau12i $a1, %pc_hi20(arr)
+; LA64NOPIC-NEXT:   addi.d $a2, $a1, %pc_lo12(arr)
+; LA64PIC-NEXT:     pcalau12i $a1, %pc_hi20(.Larr$local)
+; LA64PIC-NEXT:     addi.d $a2, $a1, %pc_lo12(.Larr$local)
 ; LA64-NEXT:        ld.w $a1, $a2, 0
 ; LA64-NEXT:        st.w $a0, $a2, 0
 ; LA64NOPIC-NEXT:   ld.w $a3, $a2, 36
@@ -252,8 +252,7 @@ define i64 @ldx_b(ptr %a, i64 %idx) nounwind {
 define i64 @ldx_h(ptr %a, i64 %idx) nounwind {
 ; LA32-LABEL: ldx_h:
 ; LA32:       # %bb.0:
-; LA32-NEXT:    slli.w $a1, $a1, 1
-; LA32-NEXT:    add.w $a1, $a0, $a1
+; LA32-NEXT:    alsl.w $a1, $a1, $a0, 1
 ; LA32-NEXT:    ld.h $a2, $a1, 0
 ; LA32-NEXT:    ld.h $a0, $a0, 0
 ; LA32-NEXT:    srai.w $a1, $a2, 31
@@ -277,8 +276,7 @@ define i64 @ldx_h(ptr %a, i64 %idx) nounwind {
 define i64 @ldx_w(ptr %a, i64 %idx) nounwind {
 ; LA32-LABEL: ldx_w:
 ; LA32:       # %bb.0:
-; LA32-NEXT:    slli.w $a1, $a1, 2
-; LA32-NEXT:    add.w $a1, $a0, $a1
+; LA32-NEXT:    alsl.w $a1, $a1, $a0, 2
 ; LA32-NEXT:    ld.w $a2, $a1, 0
 ; LA32-NEXT:    ld.w $a0, $a0, 0
 ; LA32-NEXT:    srai.w $a1, $a2, 31
@@ -302,8 +300,7 @@ define i64 @ldx_w(ptr %a, i64 %idx) nounwind {
 define i64 @ldx_d(ptr %a, i64 %idx) nounwind {
 ; LA32-LABEL: ldx_d:
 ; LA32:       # %bb.0:
-; LA32-NEXT:    slli.w $a1, $a1, 3
-; LA32-NEXT:    add.w $a1, $a0, $a1
+; LA32-NEXT:    alsl.w $a1, $a1, $a0, 3
 ; LA32-NEXT:    ld.w $a2, $a1, 0
 ; LA32-NEXT:    ld.w $a3, $a0, 0
 ; LA32-NEXT:    ld.w $a1, $a1, 4
@@ -352,8 +349,7 @@ define i64 @ldx_bu(ptr %a, i64 %idx) nounwind {
 define i64 @ldx_hu(ptr %a, i64 %idx) nounwind {
 ; LA32-LABEL: ldx_hu:
 ; LA32:       # %bb.0:
-; LA32-NEXT:    slli.w $a1, $a1, 1
-; LA32-NEXT:    add.w $a1, $a0, $a1
+; LA32-NEXT:    alsl.w $a1, $a1, $a0, 1
 ; LA32-NEXT:    ld.hu $a1, $a1, 0
 ; LA32-NEXT:    ld.hu $a0, $a0, 0
 ; LA32-NEXT:    add.w $a0, $a1, $a0
@@ -379,8 +375,7 @@ define i64 @ldx_hu(ptr %a, i64 %idx) nounwind {
 define i64 @ldx_wu(ptr %a, i64 %idx) nounwind {
 ; LA32-LABEL: ldx_wu:
 ; LA32:       # %bb.0:
-; LA32-NEXT:    slli.w $a1, $a1, 2
-; LA32-NEXT:    add.w $a1, $a0, $a1
+; LA32-NEXT:    alsl.w $a1, $a1, $a0, 2
 ; LA32-NEXT:    ld.w $a1, $a1, 0
 ; LA32-NEXT:    ld.w $a0, $a0, 0
 ; LA32-NEXT:    add.w $a0, $a1, $a0
@@ -480,8 +475,7 @@ define void @stx_b(ptr %dst, i64 %idx, i8 %val) nounwind {
 define void @stx_h(ptr %dst, i64 %idx, i16 %val) nounwind {
 ; LA32-LABEL: stx_h:
 ; LA32:       # %bb.0:
-; LA32-NEXT:    slli.w $a1, $a1, 1
-; LA32-NEXT:    add.w $a0, $a0, $a1
+; LA32-NEXT:    alsl.w $a0, $a1, $a0, 1
 ; LA32-NEXT:    st.h $a3, $a0, 0
 ; LA32-NEXT:    ret
 ;
@@ -498,8 +492,7 @@ define void @stx_h(ptr %dst, i64 %idx, i16 %val) nounwind {
 define void @stx_w(ptr %dst, i64 %idx, i32 %val) nounwind {
 ; LA32-LABEL: stx_w:
 ; LA32:       # %bb.0:
-; LA32-NEXT:    slli.w $a1, $a1, 2
-; LA32-NEXT:    add.w $a0, $a0, $a1
+; LA32-NEXT:    alsl.w $a0, $a1, $a0, 2
 ; LA32-NEXT:    st.w $a3, $a0, 0
 ; LA32-NEXT:    ret
 ;
@@ -516,8 +509,7 @@ define void @stx_w(ptr %dst, i64 %idx, i32 %val) nounwind {
 define void @stx_d(ptr %dst, i64 %idx, i64 %val) nounwind {
 ; LA32-LABEL: stx_d:
 ; LA32:       # %bb.0:
-; LA32-NEXT:    slli.w $a1, $a1, 3
-; LA32-NEXT:    add.w $a0, $a0, $a1
+; LA32-NEXT:    alsl.w $a0, $a1, $a0, 3
 ; LA32-NEXT:    st.w $a4, $a0, 4
 ; LA32-NEXT:    st.w $a3, $a0, 0
 ; LA32-NEXT:    ret

@@ -1417,7 +1417,7 @@ void Parser::ParseExternalSourceSymbolAttribute(
   ArgsUnion Args[] = {Language.get(), DefinedInExpr.get(),
                       GeneratedDeclaration};
   Attrs.addNew(&ExternalSourceSymbol, SourceRange(Loc, T.getCloseLocation()),
-               ScopeName, ScopeLoc, Args, llvm::array_lengthof(Args), Syntax);
+               ScopeName, ScopeLoc, Args, std::size(Args), Syntax);
 }
 
 /// Parse the contents of the "objc_bridge_related" attribute.
@@ -1538,7 +1538,7 @@ void Parser::ParseSwiftNewTypeAttribute(
 
   ArgsUnion Args[] = {SwiftType};
   Attrs.addNew(&AttrName, SourceRange(AttrNameLoc, T.getCloseLocation()),
-               ScopeName, ScopeLoc, Args, llvm::array_lengthof(Args), Syntax);
+               ScopeName, ScopeLoc, Args, std::size(Args), Syntax);
 }
 
 void Parser::ParseTypeTagForDatatypeAttribute(IdentifierInfo &AttrName,
@@ -1787,6 +1787,11 @@ Parser::DeclGroupPtrTy Parser::ParseDeclaration(DeclaratorContext Context,
     }
     return ParseSimpleDeclaration(Context, DeclEnd, DeclAttrs, DeclSpecAttrs,
                                   true, nullptr, DeclSpecStart);
+
+  case tok::kw_cbuffer:
+  case tok::kw_tbuffer:
+    SingleDecl = ParseHLSLBuffer(DeclEnd);
+    break;
   case tok::kw_namespace:
     ProhibitAttributes(DeclAttrs);
     ProhibitAttributes(DeclSpecAttrs);
@@ -3472,7 +3477,8 @@ void Parser::ParseDeclarationSpecifiers(DeclSpec &DS,
       // typedef-name
     case tok::kw___super:
     case tok::kw_decltype:
-    case tok::identifier: {
+    case tok::identifier:
+    ParseIdentifier: {
       // This identifier can only be a typedef name if we haven't already seen
       // a type-specifier.  Without this check we misparse:
       //  typedef int X; struct Y { short X; };  as 'short int'.
@@ -3665,7 +3671,7 @@ void Parser::ParseDeclarationSpecifiers(DeclSpec &DS,
             }
           }
           ConsumedEnd = Tok.getLocation();
-          DS.setTypeofParensRange(Tracker.getRange());
+          DS.setTypeArgumentRange(Tracker.getRange());
           // Even if something went wrong above, continue as if we've seen
           // `decltype(auto)`.
           isInvalid = DS.SetTypeSpecType(TST_decltype_auto, Loc, PrevSpec,
@@ -4207,8 +4213,13 @@ void Parser::ParseDeclarationSpecifiers(DeclSpec &DS,
       HandlePragmaMSPointersToMembers();
       continue;
 
-    case tok::kw___underlying_type:
-      ParseUnderlyingTypeSpecifier(DS);
+#define TRANSFORM_TYPE_TRAIT_DEF(_, Trait) case tok::kw___##Trait:
+#include "clang/Basic/TransformTypeTraits.def"
+      // HACK: libstdc++ already uses '__remove_cv' as an alias template so we
+      // work around this by expecting all transform type traits to be suffixed
+      // with '('. They're an identifier otherwise.
+      if (!MaybeParseTypeTransformTypeSpecifier(DS))
+        goto ParseIdentifier;
       continue;
 
     case tok::kw__Atomic:
@@ -4582,6 +4593,7 @@ void Parser::ParseEnumSpecifier(SourceLocation StartLoc, DeclSpec &DS,
     // Code completion for an enum name.
     cutOffParsing();
     Actions.CodeCompleteTag(getCurScope(), DeclSpec::TST_enum);
+    DS.SetTypeSpecError(); // Needed by ActOnUsingDeclaration.
     return;
   }
 
@@ -4641,6 +4653,7 @@ void Parser::ParseEnumSpecifier(SourceLocation StartLoc, DeclSpec &DS,
 
     if (Spec.isSet() && Tok.isNot(tok::identifier)) {
       Diag(Tok, diag::err_expected) << tok::identifier;
+      DS.SetTypeSpecError();
       if (Tok.isNot(tok::l_brace)) {
         // Has no name and is not a definition.
         // Skip the rest of this declarator, up until the comma or semicolon.
@@ -4657,6 +4670,7 @@ void Parser::ParseEnumSpecifier(SourceLocation StartLoc, DeclSpec &DS,
       Tok.isNot(tok::colon)) {
     Diag(Tok, diag::err_expected_either) << tok::identifier << tok::l_brace;
 
+    DS.SetTypeSpecError();
     // Skip the rest of this declarator, up until the comma or semicolon.
     SkipUntil(tok::comma, StopAtSemi);
     return;
@@ -4832,6 +4846,7 @@ void Parser::ParseEnumSpecifier(SourceLocation StartLoc, DeclSpec &DS,
   if (!Name && TUK != Sema::TUK_Definition) {
     Diag(Tok, diag::err_enumerator_unnamed_no_def);
 
+    DS.SetTypeSpecError();
     // Skip the rest of this declarator, up until the comma or semicolon.
     SkipUntil(tok::comma, StopAtSemi);
     return;
@@ -7446,7 +7461,7 @@ void Parser::ParseTypeofSpecifier(DeclSpec &DS) {
   ExprResult Operand = Actions.CorrectDelayedTyposInExpr(
       ParseExprAfterUnaryExprOrTypeTrait(OpTok, isCastExpr, CastTy, CastRange));
   if (hasParens)
-    DS.setTypeofParensRange(CastRange);
+    DS.setTypeArgumentRange(CastRange);
 
   if (CastRange.getEnd().isInvalid())
     // FIXME: Not accurate, the range gets one token more than it should.
@@ -7516,7 +7531,7 @@ void Parser::ParseAtomicSpecifier(DeclSpec &DS) {
   if (T.getCloseLocation().isInvalid())
     return;
 
-  DS.setTypeofParensRange(T.getRange());
+  DS.setTypeArgumentRange(T.getRange());
   DS.SetRangeEnd(T.getCloseLocation());
 
   const char *PrevSpec = nullptr;

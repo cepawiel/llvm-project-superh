@@ -684,6 +684,7 @@ clang::MakeDeductionFailureInfo(ASTContext &Context,
 
   case Sema::TDK_Success:
   case Sema::TDK_NonDependentConversionFailure:
+  case Sema::TDK_AlreadyDiagnosed:
     llvm_unreachable("not a deduction failure");
   }
 
@@ -733,6 +734,7 @@ void DeductionFailureInfo::Destroy() {
 
   // Unhandled
   case Sema::TDK_MiscellaneousDeductionFailure:
+  case Sema::TDK_AlreadyDiagnosed:
     break;
   }
 }
@@ -770,6 +772,7 @@ TemplateParameter DeductionFailureInfo::getTemplateParameter() {
 
   // Unhandled
   case Sema::TDK_MiscellaneousDeductionFailure:
+  case Sema::TDK_AlreadyDiagnosed:
     break;
   }
 
@@ -805,6 +808,7 @@ TemplateArgumentList *DeductionFailureInfo::getTemplateArgumentList() {
 
   // Unhandled
   case Sema::TDK_MiscellaneousDeductionFailure:
+  case Sema::TDK_AlreadyDiagnosed:
     break;
   }
 
@@ -836,6 +840,7 @@ const TemplateArgument *DeductionFailureInfo::getFirstArg() {
 
   // Unhandled
   case Sema::TDK_MiscellaneousDeductionFailure:
+  case Sema::TDK_AlreadyDiagnosed:
     break;
   }
 
@@ -867,6 +872,7 @@ const TemplateArgument *DeductionFailureInfo::getSecondArg() {
 
   // Unhandled
   case Sema::TDK_MiscellaneousDeductionFailure:
+  case Sema::TDK_AlreadyDiagnosed:
     break;
   }
 
@@ -992,78 +998,6 @@ static bool checkArgPlaceholdersForOverload(Sema &S, MultiExprArg Args,
   return false;
 }
 
-// Figure out the to-translation-unit depth for this function declaration for
-// the purpose of seeing if they differ by constraints. This isn't the same as
-// getTemplateDepth, because it includes already instantiated parents.
-static unsigned CalculateTemplateDepthForConstraints(Sema &S,
-                                                     FunctionDecl *FD) {
-  MultiLevelTemplateArgumentList MLTAL =
-      S.getTemplateInstantiationArgs(FD, nullptr, /*RelativeToPrimary*/ true,
-                                     /*Pattern*/ nullptr,
-                                     /*LookBeyondLambda*/ true);
-  return MLTAL.getNumSubstitutedLevels();
-}
-
-// Friend definitions can appear identical but be different declarations based
-// on the last sentence of the rule below (others included for clarification):
-// C++20 [temp.friend] p9: A non-template friend declaration
-// with a requires-clause shall be a definition.  A friend function template
-// with a constraint that depends on a template parameter from an enclosing
-// template shall be a definition.  Such a constrained friend function or
-// function template declaration does not declare the same function or function
-// template as a declaration in any other scope.
-static bool FriendsDifferByConstraints(Sema &S, DeclContext *CurContext,
-                                       FunctionDecl *Old, FunctionDecl *New,
-                                       Scope *Scope) {
-  // If these aren't friends, than they aren't friends that differe by
-  // constraints.
-  if (!Old->getFriendObjectKind() || !New->getFriendObjectKind())
-    return false;
-
-  // If the the two functions share lexical declaration context, they are not in
-  // separate instantations, and thus in the same scope.
-  if (New->getLexicalDeclContext() == Old->getLexicalDeclContext())
-    return false;
-
-  if (!Old->getDescribedFunctionTemplate()) {
-    assert(!New->getDescribedFunctionTemplate() &&
-           "How would these be the same if they aren't both templates?");
-
-    // If these friends don't have constraints, they aren't constrained, and
-    // thus don't fall under temp.friend p9. Else the simple presence of a
-    // constraint makes them unique.
-    return Old->getTrailingRequiresClause();
-  }
-
-  SmallVector<const Expr *, 3> OldAC;
-  Old->getDescribedFunctionTemplate()->getAssociatedConstraints(OldAC);
-
-#ifndef NDEBUG
-  SmallVector<const Expr *, 3> NewAC;
-  New->getDescribedFunctionTemplate()->getAssociatedConstraints(NewAC);
-  assert(OldAC.size() == NewAC.size() &&
-         "Difference should have been noticed earlier if sizes of constraints "
-         "aren't the same");
-#endif
-  // If there are no constraints, these are not constrained friend function or
-  // friend function templates.
-  if (OldAC.size() == 0)
-    return false;
-
-  unsigned OldTemplateDepth = CalculateTemplateDepthForConstraints(S, Old);
-
-  // At this point, if the constrained function template declaration depends on
-  // a template parameter from an enclosing template, they are not the same
-  // function.  Since these were deemed identical before we got here, we only
-  // have to look into 1 side to see if they refer to a containing template.
-  for (const Expr *Constraint : OldAC)
-    if (S.ConstraintExpressionDependsOnEnclosingTemplate(OldTemplateDepth,
-                                                         Constraint))
-      return true;
-
-  return false;
-}
-
 /// Determine whether the given New declaration is an overload of the
 /// declarations in Old. This routine returns Ovl_Match or Ovl_NonFunction if
 /// New and Old cannot be overloaded, e.g., if New has the same signature as
@@ -1146,7 +1080,7 @@ Sema::CheckOverload(Scope *S, FunctionDecl *New, const LookupResult &Old,
         // enclosing template shall be a definition.  Such a constrained friend
         // function or function template declaration does not declare the same
         // function or function template as a declaration in any other scope.
-        if (FriendsDifferByConstraints(*this, CurContext, OldF, New, S))
+        if (Context.FriendsDifferByConstraints(OldF, New))
           continue;
 
         Match = *I;
@@ -10185,6 +10119,13 @@ void Sema::diagnoseEquivalentInternalLinkageDeclarations(
   }
 }
 
+bool OverloadCandidate::NotValidBecauseConstraintExprHasError() const {
+  return FailureKind == ovl_fail_bad_deduction &&
+         DeductionFailure.Result == Sema::TDK_ConstraintsNotSatisfied &&
+         static_cast<CNSInfo *>(DeductionFailure.Data)
+             ->Satisfaction.ContainsErrors;
+}
+
 /// Computes the best viable function (C++ 13.3.3)
 /// within an overload candidate set.
 ///
@@ -10237,10 +10178,18 @@ OverloadCandidateSet::BestViableFunction(Sema &S, SourceLocation Loc,
   Best = end();
   for (auto *Cand : Candidates) {
     Cand->Best = false;
-    if (Cand->Viable)
+    if (Cand->Viable) {
       if (Best == end() ||
           isBetterOverloadCandidate(S, *Cand, *Best, Loc, Kind))
         Best = Cand;
+    } else if (Cand->NotValidBecauseConstraintExprHasError()) {
+      // This candidate has constraint that we were unable to evaluate because
+      // it referenced an expression that contained an error. Rather than fall
+      // back onto a potentially unintended candidate (made worse by by
+      // subsuming constraints), treat this as 'no viable candidate'.
+      Best = end();
+      return OR_No_Viable_Function;
+    }
   }
 
   // If we didn't find any viable functions, abort.
@@ -11565,6 +11514,7 @@ static unsigned RankDeductionFailure(const DeductionFailureInfo &DFI) {
   switch ((Sema::TemplateDeductionResult)DFI.Result) {
   case Sema::TDK_Success:
   case Sema::TDK_NonDependentConversionFailure:
+  case Sema::TDK_AlreadyDiagnosed:
     llvm_unreachable("non-deduction failure while diagnosing bad deduction");
 
   case Sema::TDK_Invalid:
@@ -14287,7 +14237,7 @@ ExprResult Sema::CreateOverloadedArraySubscriptExpr(SourceLocation LLoc,
                                                     MultiExprArg ArgExpr) {
   SmallVector<Expr *, 2> Args;
   Args.push_back(Base);
-  for (auto e : ArgExpr) {
+  for (auto *e : ArgExpr) {
     Args.push_back(e);
   }
   DeclarationName OpName =

@@ -190,3 +190,23 @@ func.func @round(%arg0 : f32) {
   %0 = math.round %arg0 : f32
   func.return
 }
+
+// -----
+
+// CHECK-LABEL: func @roundeven(
+// CHECK-SAME: f32
+func.func @roundeven(%arg0 : f32) {
+  // CHECK: "llvm.intr.roundeven"(%arg0) : (f32) -> f32
+  %0 = math.roundeven %arg0 : f32
+  func.return
+}
+
+// -----
+
+// CHECK-LABEL: func @trunc(
+// CHECK-SAME: f32
+func.func @trunc(%arg0 : f32) {
+  // CHECK: "llvm.intr.trunc"(%arg0) : (f32) -> f32
+  %0 = math.trunc %arg0 : f32
+  func.return
+}

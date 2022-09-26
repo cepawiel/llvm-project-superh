@@ -506,7 +506,7 @@ static void instantiateOMPDeclareVariantAttr(
 
   SmallVector<Expr *, 8> NothingExprs;
   SmallVector<Expr *, 8> NeedDevicePtrExprs;
-  SmallVector<OMPDeclareVariantAttr::InteropType, 8> AppendArgs;
+  SmallVector<OMPInteropInfo, 4> AppendArgs;
 
   for (Expr *E : Attr.adjustArgsNothing()) {
     ExprResult ER = Subst(E);
@@ -520,7 +520,10 @@ static void instantiateOMPDeclareVariantAttr(
       continue;
     NeedDevicePtrExprs.push_back(ER.get());
   }
-  llvm::append_range(AppendArgs, Attr.appendArgs());
+  for (OMPInteropInfo &II : Attr.appendArgs()) {
+    // When prefer_type is implemented for append_args handle them here too.
+    AppendArgs.emplace_back(II.IsTarget, II.IsTargetSync);
+  }
 
   S.ActOnOpenMPDeclareVariantDirective(
       FD, E, TI, NothingExprs, NeedDevicePtrExprs, AppendArgs, SourceLocation(),
@@ -871,6 +874,10 @@ static DeclT *getPreviousDeclForInstantiation(DeclT *D) {
 Decl *
 TemplateDeclInstantiator::VisitTranslationUnitDecl(TranslationUnitDecl *D) {
   llvm_unreachable("Translation units cannot be instantiated");
+}
+
+Decl *TemplateDeclInstantiator::VisitHLSLBufferDecl(HLSLBufferDecl *Decl) {
+  llvm_unreachable("HLSL buffer declarations cannot be instantiated");
 }
 
 Decl *
@@ -1628,12 +1635,16 @@ Decl *TemplateDeclInstantiator::VisitClassTemplateDecl(ClassTemplateDecl *D) {
     }
 
     if (PrevClassTemplate) {
-      TemplateParameterList *PrevParams
-        = PrevClassTemplate->getMostRecentDecl()->getTemplateParameters();
+      const ClassTemplateDecl *MostRecentPrevCT =
+          PrevClassTemplate->getMostRecentDecl();
+      TemplateParameterList *PrevParams =
+          MostRecentPrevCT->getTemplateParameters();
 
       // Make sure the parameter lists match.
-      if (!SemaRef.TemplateParameterListsAreEqual(InstParams, PrevParams, true,
-                                                  Sema::TPL_TemplateMatch))
+      if (!SemaRef.TemplateParameterListsAreEqual(
+              D->getTemplatedDecl(), InstParams,
+              MostRecentPrevCT->getTemplatedDecl(), PrevParams, true,
+              Sema::TPL_TemplateMatch))
         return nullptr;
 
       // Do some additional validation, then merge default arguments
@@ -2103,6 +2114,8 @@ Decl *TemplateDeclInstantiator::VisitFunctionDecl(
         D->getCanonicalDecl()->getStorageClass(), D->UsesFPIntrin(),
         D->isInlineSpecified(), D->hasWrittenPrototype(), D->getConstexprKind(),
         TrailingRequiresClause);
+    Function->setFriendConstraintRefersToEnclosingTemplate(
+        D->FriendConstraintRefersToEnclosingTemplate());
     Function->setRangeEnd(D->getSourceRange().getEnd());
   }
 
@@ -2452,6 +2465,9 @@ Decl *TemplateDeclInstantiator::VisitCXXMethodDecl(
         Constructor->getConstexprKind(), InheritedConstructor(),
         TrailingRequiresClause);
     Method->setRangeEnd(Constructor->getEndLoc());
+    if (Constructor->isDefaultConstructor() ||
+        Constructor->isCopyOrMoveConstructor())
+      Method->setIneligibleOrNotSelected(true);
   } else if (CXXDestructorDecl *Destructor = dyn_cast<CXXDestructorDecl>(D)) {
     Method = CXXDestructorDecl::Create(
         SemaRef.Context, Record, StartLoc, NameInfo, T, TInfo,
@@ -2474,6 +2490,8 @@ Decl *TemplateDeclInstantiator::VisitCXXMethodDecl(
         SemaRef.Context, Record, StartLoc, NameInfo, T, TInfo, SC,
         D->UsesFPIntrin(), D->isInlineSpecified(), D->getConstexprKind(),
         D->getEndLoc(), TrailingRequiresClause);
+    if (D->isMoveAssignmentOperator() || D->isCopyAssignmentOperator())
+      Method->setIneligibleOrNotSelected(true);
   }
 
   if (D->isInlined())
@@ -6349,7 +6367,7 @@ void Sema::PerformPendingInstantiations(bool LocalOnly) {
 
 void Sema::PerformDependentDiagnostics(const DeclContext *Pattern,
                        const MultiLevelTemplateArgumentList &TemplateArgs) {
-  for (auto DD : Pattern->ddiags()) {
+  for (auto *DD : Pattern->ddiags()) {
     switch (DD->getKind()) {
     case DependentDiagnostic::Access:
       HandleDependentAccessCheck(*DD, TemplateArgs);

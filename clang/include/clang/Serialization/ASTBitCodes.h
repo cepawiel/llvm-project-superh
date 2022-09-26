@@ -829,6 +829,9 @@ enum SubmoduleRecordTypes {
   /// Specifies the name of the module that will eventually
   /// re-export the entities in this module.
   SUBMODULE_EXPORT_AS = 17,
+
+  /// Specifies affecting modules that were not imported.
+  SUBMODULE_AFFECTING_MODULES = 18,
 };
 
 /// Record types used within a comments block.
@@ -1508,7 +1511,10 @@ enum DeclCode {
   /// A UnnamedGlobalConstantDecl record.
   DECL_UNNAMED_GLOBAL_CONSTANT,
 
-  DECL_LAST = DECL_UNNAMED_GLOBAL_CONSTANT
+  /// A HLSLBufferDecl record.
+  DECL_HLSL_BUFFER,
+
+  DECL_LAST = DECL_HLSL_BUFFER
 };
 
 /// Record codes for each kind of statement or expression.

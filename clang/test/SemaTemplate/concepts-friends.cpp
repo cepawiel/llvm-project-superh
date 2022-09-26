@@ -369,3 +369,28 @@ void useS() {
 }
 
 } // namespace LibCXXOperatorRedef
+
+namespace NamedDeclRefs {
+  namespace my_std {
+    template<typename T, typename U>
+      concept Outer = true;
+    template<typename T>
+      using Inner = T;
+  }
+  template<typename T>
+    struct Proxy {
+      template<class U>
+        friend constexpr void RefOuter()
+        requires my_std::Outer<my_std::Inner<T>, my_std::Inner<U>>{}
+      template<class U>
+        friend constexpr void NoRefOuter() // #NOREFOUTER
+        requires my_std::Outer<my_std::Inner<U>, my_std::Inner<U>>{}
+    };
+  void use() {
+    Proxy<int> p;
+    Proxy<float> p2;
+    // expected-error@#NOREFOUTER {{redefinition of 'NoRefOuter'}}
+    // expected-note@-2{{in instantiation of template class}}
+    // expected-note@#NOREFOUTER{{previous definition is here}}
+  }
+} // namespace NamedDeclRefs

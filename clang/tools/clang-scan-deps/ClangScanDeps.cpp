@@ -151,6 +151,11 @@ static llvm::cl::opt<bool> OptimizeArgs(
     llvm::cl::desc("Whether to optimize command-line arguments of modules."),
     llvm::cl::init(false), llvm::cl::cat(DependencyScannerCategory));
 
+static llvm::cl::opt<bool> EagerLoadModules(
+    "eager-load-pcm",
+    llvm::cl::desc("Load PCM files eagerly (instead of lazily on import)."),
+    llvm::cl::init(false), llvm::cl::cat(DependencyScannerCategory));
+
 llvm::cl::opt<unsigned>
     NumThreads("j", llvm::cl::Optional,
                llvm::cl::desc("Number of worker threads to use (default: use "
@@ -175,6 +180,11 @@ llvm::cl::opt<std::string> ModuleName(
 llvm::cl::list<std::string> ModuleDepTargets(
     "dependency-target",
     llvm::cl::desc("The names of dependency targets for the dependency file"),
+    llvm::cl::cat(DependencyScannerCategory));
+
+llvm::cl::opt<bool> DeprecatedDriverCommand(
+    "deprecated-driver-command", llvm::cl::Optional,
+    llvm::cl::desc("use a single driver command to build the tu (deprecated)"),
     llvm::cl::cat(DependencyScannerCategory));
 
 enum ResourceDirRecipeKind {
@@ -251,7 +261,7 @@ class FullDeps {
 public:
   void mergeDeps(StringRef Input, FullDependenciesResult FDR,
                  size_t InputIndex) {
-    const FullDependencies &FD = FDR.FullDeps;
+    FullDependencies &FD = FDR.FullDeps;
 
     InputDeps ID;
     ID.FileName = std::string(Input);
@@ -269,7 +279,8 @@ public:
       Modules.insert(I, {{MD.ID, InputIndex}, std::move(MD)});
     }
 
-    ID.CommandLine = FD.CommandLine;
+    ID.DriverCommandLine = std::move(FD.DriverCommandLine);
+    ID.Commands = std::move(FD.Commands);
     Inputs.push_back(std::move(ID));
   }
 
@@ -299,21 +310,40 @@ public:
           {"file-deps", toJSONSorted(MD.FileDeps)},
           {"clang-module-deps", toJSONSorted(MD.ClangModuleDeps)},
           {"clang-modulemap-file", MD.ClangModuleMapFile},
-          {"command-line", MD.getCanonicalCommandLine()},
+          {"command-line", MD.BuildArguments},
       };
       OutModules.push_back(std::move(O));
     }
 
     Array TUs;
     for (auto &&I : Inputs) {
-      Object O{
-          {"input-file", I.FileName},
-          {"clang-context-hash", I.ContextHash},
-          {"file-deps", I.FileDeps},
-          {"clang-module-deps", toJSONSorted(I.ModuleDeps)},
-          {"command-line", I.CommandLine},
-      };
-      TUs.push_back(std::move(O));
+      Array Commands;
+      if (I.DriverCommandLine.empty()) {
+        for (const auto &Cmd : I.Commands) {
+          Object O{
+              {"input-file", I.FileName},
+              {"clang-context-hash", I.ContextHash},
+              {"file-deps", I.FileDeps},
+              {"clang-module-deps", toJSONSorted(I.ModuleDeps)},
+              {"executable", Cmd.Executable},
+              {"command-line", Cmd.Arguments},
+          };
+          Commands.push_back(std::move(O));
+        }
+      } else {
+        Object O{
+            {"input-file", I.FileName},
+            {"clang-context-hash", I.ContextHash},
+            {"file-deps", I.FileDeps},
+            {"clang-module-deps", toJSONSorted(I.ModuleDeps)},
+            {"executable", "clang"},
+            {"command-line", I.DriverCommandLine},
+        };
+        Commands.push_back(std::move(O));
+      }
+      TUs.push_back(Object{
+          {"commands", std::move(Commands)},
+      });
     }
 
     Object Output{
@@ -348,7 +378,8 @@ private:
     std::string ContextHash;
     std::vector<std::string> FileDeps;
     std::vector<ModuleID> ModuleDeps;
-    std::vector<std::string> CommandLine;
+    std::vector<std::string> DriverCommandLine;
+    std::vector<Command> Commands;
   };
 
   std::mutex Lock;
@@ -499,7 +530,7 @@ int main(int argc, const char **argv) {
   SharedStream DependencyOS(llvm::outs());
 
   DependencyScanningService Service(ScanMode, Format, ReuseFileManager,
-                                    OptimizeArgs);
+                                    OptimizeArgs, EagerLoadModules);
   llvm::ThreadPool Pool(llvm::hardware_concurrency(NumThreads));
   std::vector<std::unique_ptr<DependencyScanningTool>> WorkerTools;
   for (unsigned I = 0; I < Pool.getThreadCount(); ++I)
@@ -553,6 +584,14 @@ int main(int argc, const char **argv) {
               Input->CommandLine, CWD, MaybeModuleName);
           if (handleMakeDependencyToolResult(Filename, MaybeFile, DependencyOS,
                                              Errs))
+            HadErrors = true;
+        } else if (DeprecatedDriverCommand) {
+          auto MaybeFullDeps =
+              WorkerTools[I]->getFullDependenciesLegacyDriverCommand(
+                  Input->CommandLine, CWD, AlreadySeenModules, LookupOutput,
+                  MaybeModuleName);
+          if (handleFullDependencyToolResult(Filename, MaybeFullDeps, FD,
+                                             LocalIndex, DependencyOS, Errs))
             HadErrors = true;
         } else {
           auto MaybeFullDeps = WorkerTools[I]->getFullDependencies(

@@ -192,10 +192,21 @@ Error ExecutorSharedMemoryMapperService::deinitialize(
   {
     std::lock_guard<std::mutex> Lock(Mutex);
 
-    for (auto Base : Bases) {
+    for (auto Base : llvm::reverse(Bases)) {
       if (Error Err = shared::runDeallocActions(
               Allocations[Base].DeinitializationActions)) {
         AllErr = joinErrors(std::move(AllErr), std::move(Err));
+      }
+
+      // Remove the allocation from the allocation list of its reservation
+      for (auto &Reservation : Reservations) {
+        auto AllocationIt =
+            std::find(Reservation.second.Allocations.begin(),
+                      Reservation.second.Allocations.end(), Base);
+        if (AllocationIt != Reservation.second.Allocations.end()) {
+          Reservation.second.Allocations.erase(AllocationIt);
+          break;
+        }
       }
 
       Allocations.erase(Base);
@@ -264,22 +275,15 @@ Error ExecutorSharedMemoryMapperService::release(
 }
 
 Error ExecutorSharedMemoryMapperService::shutdown() {
+  if (Reservations.empty())
+    return Error::success();
+
   std::vector<ExecutorAddr> ReservationAddrs;
-  {
-    std::lock_guard<std::mutex> Lock(Mutex);
+  ReservationAddrs.reserve(Reservations.size());
+  for (const auto &R : Reservations)
+    ReservationAddrs.push_back(ExecutorAddr::fromPtr(R.getFirst()));
 
-    if (Reservations.empty())
-      return Error::success();
-
-    ReservationAddrs.reserve(Reservations.size());
-    for (const auto &R : Reservations) {
-      ReservationAddrs.push_back(ExecutorAddr::fromPtr(R.getFirst()));
-    }
-
-    Reservations.clear();
-  }
-
-  return release(ReservationAddrs);
+  return release(std::move(ReservationAddrs));
 }
 
 void ExecutorSharedMemoryMapperService::addBootstrapSymbols(

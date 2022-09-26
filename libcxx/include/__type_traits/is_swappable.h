@@ -44,12 +44,12 @@ using __swap_result_t = void;
 
 template <class _Tp>
 inline _LIBCPP_INLINE_VISIBILITY
-_LIBCPP_CONSTEXPR_AFTER_CXX17 __swap_result_t<_Tp>
+_LIBCPP_CONSTEXPR_SINCE_CXX20 __swap_result_t<_Tp>
 swap(_Tp& __x, _Tp& __y) _NOEXCEPT_(is_nothrow_move_constructible<_Tp>::value &&
                                     is_nothrow_move_assignable<_Tp>::value);
 
 template<class _Tp, size_t _Np>
-inline _LIBCPP_INLINE_VISIBILITY _LIBCPP_CONSTEXPR_AFTER_CXX17
+inline _LIBCPP_INLINE_VISIBILITY _LIBCPP_CONSTEXPR_SINCE_CXX20
 typename enable_if<
     __is_swappable<_Tp>::value
 >::type
@@ -119,10 +119,10 @@ struct _LIBCPP_TEMPLATE_VIS is_swappable_with
 template <class _Tp>
 struct _LIBCPP_TEMPLATE_VIS is_swappable
     : public conditional<
-        __is_referenceable<_Tp>::value,
+        __libcpp_is_referenceable<_Tp>::value,
         is_swappable_with<
-            typename add_lvalue_reference<_Tp>::type,
-            typename add_lvalue_reference<_Tp>::type>,
+            __add_lvalue_reference_t<_Tp>,
+            __add_lvalue_reference_t<_Tp> >,
         false_type
     >::type
 {
@@ -137,10 +137,10 @@ struct _LIBCPP_TEMPLATE_VIS is_nothrow_swappable_with
 template <class _Tp>
 struct _LIBCPP_TEMPLATE_VIS is_nothrow_swappable
     : public conditional<
-        __is_referenceable<_Tp>::value,
+        __libcpp_is_referenceable<_Tp>::value,
         is_nothrow_swappable_with<
-            typename add_lvalue_reference<_Tp>::type,
-            typename add_lvalue_reference<_Tp>::type>,
+            __add_lvalue_reference_t<_Tp>,
+            __add_lvalue_reference_t<_Tp> >,
         false_type
     >::type
 {

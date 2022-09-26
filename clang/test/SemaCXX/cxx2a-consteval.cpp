@@ -648,8 +648,39 @@ template <typename T> constexpr int baz() {
 
 static_assert(bar<15>() == 15);
 static_assert(baz<int>() == sizeof(int));
-
 } // namespace value_dependent
+
+// https://github.com/llvm/llvm-project/issues/55601
+namespace issue_55601 {
+template<typename T>
+class Bar {
+  consteval static T x() { return 5; }  // expected-note {{non-constexpr constructor 'derp' cannot be used in a constant expression}}
+ public:
+  Bar() : a(x()) {} // expected-error {{call to consteval function 'issue_55601::Bar<issue_55601::derp>::x' is not a constant expression}}
+                    // expected-error@-1 {{call to consteval function 'issue_55601::derp::operator int' is not a constant expression}}
+                    // expected-note@-2 {{in call to 'x()'}}
+                    // expected-note@-3 {{non-literal type 'issue_55601::derp' cannot be used in a constant expression}}
+ private:
+  int a;
+};
+Bar<int> f;
+Bar<float> g;
+
+struct derp {
+  // Can't be used in a constant expression
+  derp(int); // expected-note {{declared here}}
+  consteval operator int() const { return 5; }
+};
+Bar<derp> a; // expected-note {{in instantiation of member function 'issue_55601::Bar<issue_55601::derp>::Bar' requested here}}
+
+struct constantDerp {
+  // Can be used in a constant expression.
+  consteval constantDerp(int) {} 
+  consteval operator int() const { return 5; }
+};
+Bar<constantDerp> b;
+
+} // namespace issue_55601
 
 namespace default_argument {
 
@@ -865,3 +896,125 @@ consteval int aConstevalFunction() { // expected-error {{consteval function neve
 }
 
 } // namespace multiple_default_constructors
+
+namespace GH50055 {
+enum E {e1=0, e2=1};
+consteval int testDefaultArgForParam(E eParam = (E)-1) {
+// expected-error@-1 {{integer value -1 is outside the valid range of values [0, 1] for this enumeration type}}
+  return (int)eParam;
+}
+
+int test() {
+  return testDefaultArgForParam() + testDefaultArgForParam((E)1);
+}
+}
+
+namespace GH51182 {
+// Nested consteval function.
+consteval int f(int v) {
+  return v;
+}
+
+template <typename T>
+consteval int g(T a) {
+  // An immediate function context.
+  int n = f(a);
+  return n;
+}
+static_assert(g(100) == 100);
+// --------------------------------------
+template <typename T>
+consteval T max(const T& a, const T& b) {
+    return (a > b) ? a : b;
+}
+template <typename T>
+consteval T mid(const T& a, const T& b, const T& c) {
+    T m = max(max(a, b), c);
+    if (m == a)
+        return max(b, c);
+    if (m == b)
+        return max(a, c);
+    return max(a, b);
+}
+static_assert(max(1,2)==2);
+static_assert(mid(1,2,3)==2);
+} // namespace GH51182
+
+// https://github.com/llvm/llvm-project/issues/56183
+namespace GH56183 {
+consteval auto Foo(auto c) { return c; }
+consteval auto Bar(auto f) { return f(); }
+void test() {
+  constexpr auto x = Foo(Bar([] { return 'a'; }));
+  static_assert(x == 'a');
+}
+}  // namespace GH56183
+
+// https://github.com/llvm/llvm-project/issues/51695
+namespace GH51695 {
+// Original ========================================
+template <typename T>
+struct type_t {};
+
+template <typename...>
+struct list_t {};
+
+template <typename T, typename... Ts>
+consteval auto pop_front(list_t<T, Ts...>) -> auto {
+  return list_t<Ts...>{};
+}
+
+template <typename... Ts, typename F>
+consteval auto apply(list_t<Ts...>, F fn) -> auto {
+  return fn(type_t<Ts>{}...);
+}
+
+void test1() {
+  constexpr auto x = apply(pop_front(list_t<char, char>{}),
+                            []<typename... Us>(type_t<Us>...) { return 42; });
+  static_assert(x == 42);
+}
+// Reduced 1 ========================================
+consteval bool zero() { return false; }
+
+template <typename F>
+consteval bool foo(bool, F f) {
+  return f();
+}
+
+void test2() {
+  constexpr auto x = foo(zero(), []() { return true; });
+  static_assert(x);
+}
+
+// Reduced 2 ========================================
+template <typename F>
+consteval auto bar(F f) { return f;}
+
+void test3() {
+  constexpr auto t1 = bar(bar(bar(bar([]() { return true; }))))();
+  static_assert(t1);
+
+  int a = 1; // expected-note {{declared here}}
+  auto t2 = bar(bar(bar(bar([=]() { return a; }))))(); // expected-error-re {{call to consteval function 'GH51695::bar<(lambda at {{.*}})>' is not a constant expression}}
+  // expected-note@-1 {{read of non-const variable 'a' is not allowed in a constant expression}}
+
+  constexpr auto t3 = bar(bar([x=bar(42)]() { return x; }))();
+  static_assert(t3==42);
+  constexpr auto t4 = bar(bar([x=bar(42)]() consteval { return x; }))();
+  static_assert(t4==42);
+}
+
+}  // namespace GH51695
+
+// https://github.com/llvm/llvm-project/issues/50455
+namespace GH50455 {
+void f() {
+  []() consteval { int i{}; }();
+  []() consteval { int i{}; ++i; }();
+}
+void g() {
+  (void)[](int i) consteval { return i; }(0);
+  (void)[](int i) consteval { return i; }(0);
+}
+}  // namespace GH50455

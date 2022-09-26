@@ -46,7 +46,7 @@ _LIBCPP_PUSH_MACROS
 
 _LIBCPP_BEGIN_NAMESPACE_STD
 
-#if _LIBCPP_STD_VER > 17 && !defined(_LIBCPP_HAS_NO_INCOMPLETE_RANGES)
+#if _LIBCPP_STD_VER > 17
 
 namespace ranges {
 
@@ -226,6 +226,7 @@ struct __passthrough_type<basic_string_view<_CharT, _Traits>> {
 };
 
 template <class _Iter, class _Sent, subrange_kind _Kind>
+  requires requires{typename subrange<_Iter>;}
 struct __passthrough_type<subrange<_Iter, _Sent, _Kind>> {
   using type = subrange<_Iter>;
 };
@@ -329,7 +330,7 @@ inline namespace __cpo {
 
 } // namespace ranges
 
-#endif // _LIBCPP_STD_VER > 17 && !defined(_LIBCPP_HAS_NO_INCOMPLETE_RANGES)
+#endif // _LIBCPP_STD_VER > 17
 
 _LIBCPP_END_NAMESPACE_STD
 

@@ -99,7 +99,7 @@ bool PPCCTRLoops::runOnMachineFunction(MachineFunction &MF) {
   TII = static_cast<const PPCInstrInfo *>(MF.getSubtarget().getInstrInfo());
   MRI = &MF.getRegInfo();
 
-  for (auto ML : MLI) {
+  for (auto *ML : MLI) {
     if (ML->isOutermost())
       Changed |= processLoop(ML);
   }
@@ -139,8 +139,8 @@ bool PPCCTRLoops::processLoop(MachineLoop *ML) {
   bool Changed = false;
 
   // Align with HardwareLoop pass, process inner loops first.
-  for (auto I = ML->begin(), E = ML->end(); I != E; ++I)
-    Changed |= processLoop(*I);
+  for (MachineLoop *I : *ML)
+    Changed |= processLoop(I);
 
   // If any inner loop is changed, outter loop must be without hardware loop
   // intrinsics.

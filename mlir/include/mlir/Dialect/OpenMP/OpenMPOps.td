@@ -30,7 +30,7 @@ def OpenMP_Dialect : Dialect {
   let useDefaultAttributePrinterParser = 1;
 
   // TODO: Flip to _Prefixed.
-  let emitAccessorPrefix = kEmitAccessorPrefix_Raw;
+  let emitAccessorPrefix = kEmitAccessorPrefix_Both;
 }
 
 // OmpCommon requires definition of OpenACC_Dialect.
@@ -114,15 +114,6 @@ def ParallelOp : OpenMP_Op<"parallel", [
     ) $region attr-dict
   }];
   let hasVerifier = 1;
-  let extraClassDeclaration = [{
-    // TODO: remove this once emitAccessorPrefix is set to
-    // kEmitAccessorPrefix_Prefixed for the dialect.
-    /// Returns the reduction variables
-    SmallVector<Value> getReductionVars() {
-      return SmallVector<Value>(reduction_vars().begin(),
-                                reduction_vars().end());
-    }
-  }];
 }
 
 def TerminatorOp : OpenMP_Op<"terminator", [Terminator, NoSideEffect]> {
@@ -221,16 +212,6 @@ def SectionsOp : OpenMP_Op<"sections", [AttrSizedOperandSegments,
 
   let hasVerifier = 1;
   let hasRegionVerifier = 1;
-
-  let extraClassDeclaration = [{
-    // TODO: remove this once emitAccessorPrefix is set to
-    // kEmitAccessorPrefix_Prefixed for the dialect.
-    /// Returns the reduction variables
-    SmallVector<Value> getReductionVars() {
-      return SmallVector<Value>(reduction_vars().begin(),
-                                reduction_vars().end());
-    }
-  }];
 }
 
 //===----------------------------------------------------------------------===//
@@ -363,14 +344,6 @@ def WsLoopOp : OpenMP_Op<"wsloop", [AttrSizedOperandSegments,
 
     /// Returns the number of reduction variables.
     unsigned getNumReductionVars() { return reduction_vars().size(); }
-
-    // TODO: remove this once emitAccessorPrefix is set to
-    // kEmitAccessorPrefix_Prefixed for the dialect.
-    /// Returns the reduction variables
-    SmallVector<Value> getReductionVars() {
-      return SmallVector<Value>(reduction_vars().begin(),
-                                reduction_vars().end());
-    }
   }];
   let hasCustomAssemblyFormat = 1;
   let assemblyFormat = [{
@@ -421,6 +394,10 @@ def SimdLoopOp : OpenMP_Op<"simdloop", [AttrSizedOperandSegments,
 
     When a simdlen clause is present, the preferred number of iterations to be
     executed concurrently is the value provided to the simdlen clause.
+
+    The safelen clause specifies that no two concurrent iterations within a
+    SIMD chunk can have a distance in the logical iteration space that is
+    greater than or equal to the value given in the clause.
     ```
     omp.simdloop <clauses>
     for (%i1, %i2) : index = (%c0, %c0) to (%c10, %c10) step (%c1, %c1) {
@@ -436,6 +413,7 @@ def SimdLoopOp : OpenMP_Op<"simdloop", [AttrSizedOperandSegments,
              Variadic<IntLikeType>:$step,
              Optional<I1>:$if_expr,
              ConfinedAttr<OptionalAttr<I64Attr>, [IntPositive]>:$simdlen,
+             ConfinedAttr<OptionalAttr<I64Attr>, [IntPositive]>:$safelen,
              UnitAttr:$inclusive
      );
 
@@ -443,6 +421,7 @@ def SimdLoopOp : OpenMP_Op<"simdloop", [AttrSizedOperandSegments,
   let assemblyFormat = [{
     oilist(`if` `(` $if_expr `)`
           |`simdlen` `(` $simdlen  `)`
+          |`safelen` `(` $safelen  `)`
     ) `for` custom<LoopControl>($region, $lowerBound, $upperBound, $step,
                                   type($step), $inclusive) attr-dict
   }];
@@ -717,7 +696,7 @@ def TaskLoopOp : OpenMP_Op<"taskloop", [AttrSizedOperandSegments,
 
   let extraClassDeclaration = [{
     /// Returns the reduction variables
-    SmallVector<Value> getReductionVars();
+    SmallVector<Value> getAllReductionVars();
     void getEffects(SmallVectorImpl<MemoryEffects::EffectInstance> &effects);
   }];
 
@@ -773,7 +752,7 @@ def TaskGroupOp : OpenMP_Op<"taskgroup", [AttrSizedOperandSegments,
 
   let extraClassDeclaration = [{
     /// Returns the reduction variables
-    operand_range getReductionVars() { return task_reduction_vars(); }
+    operand_range getAllReductionVars() { return task_reduction_vars(); }
   }];
 
   let hasVerifier = 1;
@@ -1046,7 +1025,7 @@ def AtomicReadOp : OpenMP_Op<"atomic.read", [AllTypesMatch<["x", "v"]>]> {
 
   let arguments = (ins OpenMP_PointerLikeType:$x,
                        OpenMP_PointerLikeType:$v,
-                       DefaultValuedAttr<I64Attr, "0">:$hint_val,
+                       DefaultValuedOptionalAttr<I64Attr, "0">:$hint_val,
                        OptionalAttr<MemoryOrderKindAttr>:$memory_order_val);
   let assemblyFormat = [{
     $v `=` $x
@@ -1093,7 +1072,7 @@ def AtomicWriteOp : OpenMP_Op<"atomic.write"> {
 
   let arguments = (ins OpenMP_PointerLikeType:$address,
                        AnyType:$value,
-                       DefaultValuedAttr<I64Attr, "0">:$hint_val,
+                       DefaultValuedOptionalAttr<I64Attr, "0">:$hint_val,
                        OptionalAttr<MemoryOrderKindAttr>:$memory_order_val);
   let assemblyFormat = [{
     $address `=` $value
@@ -1157,7 +1136,7 @@ def AtomicUpdateOp : OpenMP_Op<"atomic.update",
   let arguments = (ins Arg<OpenMP_PointerLikeType,
                            "Address of variable to be updated",
                            [MemRead, MemWrite]>:$x,
-                       DefaultValuedAttr<I64Attr, "0">:$hint_val,
+                       DefaultValuedOptionalAttr<I64Attr, "0">:$hint_val,
                        OptionalAttr<MemoryOrderKindAttr>:$memory_order_val);
   let regions = (region SizedRegion<1>:$region);
   let assemblyFormat = [{
@@ -1219,7 +1198,7 @@ def AtomicCaptureOp : OpenMP_Op<"atomic.capture",
 
   }];
 
-  let arguments = (ins DefaultValuedAttr<I64Attr, "0">:$hint_val,
+  let arguments = (ins DefaultValuedOptionalAttr<I64Attr, "0">:$hint_val,
                        OptionalAttr<MemoryOrderKindAttr>:$memory_order_val);
   let regions = (region SizedRegion<1>:$region);
   let assemblyFormat = [{

@@ -2878,7 +2878,7 @@ static bool unswitchBestCondition(
         if (CB->isConvergent() || CB->cannotDuplicate())
           return false;
 
-      Cost += TTI.getUserCost(&I, CostKind);
+      Cost += TTI.getInstructionCost(&I, CostKind);
     }
     assert(Cost >= 0 && "Must not have negative costs!");
     LoopCost += Cost;
@@ -3086,7 +3086,7 @@ unswitchLoop(Loop &L, DominatorTree &DT, LoopInfo &LI, AssumptionCache &AC,
   // Skip cold loops, as unswitching them brings little benefit
   // but increases the code size
   if (PSI && PSI->hasProfileSummary() && BFI &&
-      PSI->isColdBlock(L.getHeader(), BFI)) {
+      PSI->isFunctionColdInCallGraph(L.getHeader()->getParent(), *BFI)) {
     LLVM_DEBUG(dbgs() << " Skip cold loop: " << L << "\n");
     return false;
   }

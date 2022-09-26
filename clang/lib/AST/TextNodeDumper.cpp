@@ -1551,9 +1551,11 @@ void TextNodeDumper::VisitTypedefType(const TypedefType *T) {
 
 void TextNodeDumper::VisitUnaryTransformType(const UnaryTransformType *T) {
   switch (T->getUTTKind()) {
-  case UnaryTransformType::EnumUnderlyingType:
-    OS << " underlying_type";
+#define TRANSFORM_TYPE_TRAIT_DEF(Enum, Trait)                                  \
+  case UnaryTransformType::Enum:                                               \
+    OS << " " #Trait;                                                          \
     break;
+#include "clang/Basic/TransformTypeTraits.def"
   }
 }
 
@@ -2385,4 +2387,12 @@ void TextNodeDumper::VisitCompoundStmt(const CompoundStmt *S) {
   VisitStmt(S);
   if (S->hasStoredFPFeatures())
     printFPOptions(S->getStoredFPFeatures());
+}
+
+void TextNodeDumper::VisitHLSLBufferDecl(const HLSLBufferDecl *D) {
+  if (D->isCBuffer())
+    OS << " cbuffer";
+  else
+    OS << " tbuffer";
+  dumpName(D);
 }

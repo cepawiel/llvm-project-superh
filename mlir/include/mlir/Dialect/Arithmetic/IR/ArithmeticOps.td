@@ -202,6 +202,50 @@ def Arith_AddIOp : Arith_IntBinaryOp<"addi", [Commutative]> {
   let hasCanonicalizer = 1;
 }
 
+
+def Arith_AddUICarryOp : Arith_Op<"addui_carry", [Commutative,
+    AllTypesMatch<["lhs", "rhs", "sum"]>]> {
+  let summary = "unsigned integer addition operation returning sum and carry";
+  let description = [{
+    The `addui_carry` operation takes two operands and returns two results: the
+    sum (same type as both operands), and the carry (boolean-like). The carry
+    value `1` indicates unsigned addition overflow, while indicates `0` no
+    overflow.
+
+    Example:
+
+    ```mlir
+    // Scalar addition.
+    %sum, %carry = arith.addui_carry %b, %c : i64, i1
+
+    // Vector element-wise addition.
+    %b:2 = arith.addui_carry %g, %h : vector<4xi32>, vector<4xi1>
+
+    // Tensor element-wise addition.
+    %c:2 = arith.addui_carry %y, %z : tensor<4x?xi8>, tensor<4x?xi1>
+    ```
+  }];
+
+  let arguments = (ins SignlessIntegerLike:$lhs, SignlessIntegerLike:$rhs);
+  let results = (outs SignlessIntegerLike:$sum, BoolLike:$carry);
+  let assemblyFormat = [{
+    $lhs `,` $rhs attr-dict `:` type($sum) `,` type($carry)
+  }];
+
+  let builders = [
+    OpBuilder<(ins "Value":$lhs, "Value":$rhs), [{
+      build($_builder, $_state, lhs.getType(), ::getI1SameShape(lhs.getType()),
+            lhs, rhs);
+    }]>
+  ];
+
+  let hasFolder = 1;
+
+  let extraClassDeclaration = [{
+    ::llvm::Optional<::llvm::SmallVector<int64_t, 4>> getShapeForUnroll();
+  }];
+}
+
 //===----------------------------------------------------------------------===//
 // SubIOp
 //===----------------------------------------------------------------------===//

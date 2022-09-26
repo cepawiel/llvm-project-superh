@@ -12,8 +12,6 @@
 #include "llvm/ExecutionEngine/JITLink/JITLink.h"
 #include "llvm/Support/Process.h"
 
-#include <limits>
-
 using namespace llvm::jitlink;
 
 namespace llvm {
@@ -34,7 +32,8 @@ public:
     std::swap(AI.Segments, Segs);
     std::swap(AI.Actions, G.allocActions());
 
-    Parent.Mapper->initialize(AI, [&](Expected<ExecutorAddr> Result) {
+    Parent.Mapper->initialize(AI, [OnFinalize = std::move(OnFinalize)](
+                                      Expected<ExecutorAddr> Result) mutable {
       if (!Result) {
         OnFinalize(Result.takeError());
         return;
@@ -157,8 +156,16 @@ void MapperJITLinkMemoryManager::deallocate(
   Mapper->deinitialize(Bases, [this, Allocs = std::move(Allocs),
                                OnDeallocated = std::move(OnDeallocated)](
                                   llvm::Error Err) mutable {
-    if (Err)
+    // TODO: How should we treat memory that we fail to deinitialize?
+    // We're currently bailing out and treating it as "burned" -- should we
+    // require that a failure to deinitialize still reset the memory so that
+    // we can reclaim it?
+    if (Err) {
+      for (auto &FA : Allocs)
+        FA.release();
       OnDeallocated(std::move(Err));
+      return;
+    }
 
     {
       std::lock_guard<std::mutex> Lock(Mutex);

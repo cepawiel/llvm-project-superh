@@ -639,6 +639,21 @@ def Shape_ShapeOfOp : Shape_Op<"shape_of",
   }];
 }
 
+def Shape_ValueOfOp : Shape_Op<"value_of", [NoSideEffect]> {
+  let summary = "Returns value of a !shape.value_shape operand";
+
+   let description = [{
+    The operation takes !shape.value_shape, a.k.a. (value, shape) tuple as an
+    argument, and returns its value. The behavior is undefined for unknown and
+    invalid arguments.
+  }];
+
+  let arguments = (ins Shape_ValueShapeType:$arg);
+  let results = (outs AnyShaped:$result);
+
+  let assemblyFormat = "$arg attr-dict `:` type($result)";
+}
+
 def Shape_SizeToIndexOp : Shape_Op<"size_to_index", [
     DeclareOpInterfaceMethods<CastOpInterface>, NoSideEffect
   ]> {
@@ -721,7 +736,7 @@ def Shape_WithOp : Shape_Op<"with_shape", [NoSideEffect]> {
   }];
 
   let arguments = (ins AnyTypeOf<[AnyShaped, Shape_ValueShapeType]>:$operand,
-                       Shape_ShapeType:$shape);
+                       Shape_ShapeOrExtentTensorType:$shape);
   let results = (outs Shape_ValueShapeType:$result);
 
   let assemblyFormat = "operands attr-dict `:` type($operand) `,` type($shape)";
@@ -1095,7 +1110,20 @@ def Shape_FuncOp : Shape_Op<"func",
                        OptionalAttr<StrAttr>:$sym_visibility);
   let regions = (region AnyRegion:$body);
 
+  let builders = [OpBuilder<(ins
+    "StringRef":$name, "FunctionType":$type,
+    CArg<"ArrayRef<NamedAttribute>", "{}">:$attrs,
+    CArg<"ArrayRef<DictionaryAttr>", "{}">:$argAttrs)
+  >];
+
   let extraClassDeclaration = [{
+    static FuncOp create(Location location, StringRef name, FunctionType type,
+                         ArrayRef<NamedAttribute> attrs = {});
+    static FuncOp create(Location location, StringRef name, FunctionType type,
+                         Operation::dialect_attr_range attrs);
+    static FuncOp create(Location location, StringRef name, FunctionType type,
+                         ArrayRef<NamedAttribute> attrs,
+                         ArrayRef<DictionaryAttr> argAttrs);
     //===------------------------------------------------------------------===//
     // CallableOpInterface
     //===------------------------------------------------------------------===//

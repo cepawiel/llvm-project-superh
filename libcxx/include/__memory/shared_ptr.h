@@ -34,6 +34,7 @@
 #include <cstddef>
 #include <cstdlib> // abort
 #include <iosfwd>
+#include <new>
 #include <stdexcept>
 #include <type_traits>
 #include <typeinfo>
@@ -130,8 +131,8 @@ class _LIBCPP_EXCEPTION_ABI bad_weak_ptr
 public:
     bad_weak_ptr() _NOEXCEPT = default;
     bad_weak_ptr(const bad_weak_ptr&) _NOEXCEPT = default;
-    virtual ~bad_weak_ptr() _NOEXCEPT;
-    virtual const char* what() const  _NOEXCEPT;
+    ~bad_weak_ptr() _NOEXCEPT override;
+    const char* what() const  _NOEXCEPT override;
 };
 
 _LIBCPP_NORETURN inline _LIBCPP_INLINE_VISIBILITY
@@ -196,7 +197,7 @@ public:
         : __shared_count(__refs),
           __shared_weak_owners_(__refs) {}
 protected:
-    virtual ~__shared_weak_count();
+    ~__shared_weak_count() override;
 
 public:
 #if defined(_LIBCPP_SHARED_PTR_DEFINE_LEGACY_INLINE_FUNCTIONS)
@@ -239,12 +240,12 @@ public:
         :  __data_(__compressed_pair<_Tp, _Dp>(__p, _VSTD::move(__d)), _VSTD::move(__a)) {}
 
 #ifndef _LIBCPP_NO_RTTI
-    virtual const void* __get_deleter(const type_info&) const _NOEXCEPT;
+    const void* __get_deleter(const type_info&) const _NOEXCEPT override;
 #endif
 
 private:
-    virtual void __on_zero_shared() _NOEXCEPT;
-    virtual void __on_zero_shared_weak() _NOEXCEPT;
+    void __on_zero_shared() _NOEXCEPT override;
+    void __on_zero_shared_weak() _NOEXCEPT override;
 };
 
 #ifndef _LIBCPP_NO_RTTI
@@ -304,7 +305,7 @@ struct __shared_ptr_emplace
     _Tp* __get_elem() _NOEXCEPT { return __storage_.__get_elem(); }
 
 private:
-    virtual void __on_zero_shared() _NOEXCEPT {
+    void __on_zero_shared() _NOEXCEPT override {
 #if _LIBCPP_STD_VER > 17
         using _TpAlloc = typename __allocator_traits_rebind<_Alloc, _Tp>::type;
         _TpAlloc __tmp(*__get_alloc());
@@ -314,7 +315,7 @@ private:
 #endif
     }
 
-    virtual void __on_zero_shared_weak() _NOEXCEPT {
+    void __on_zero_shared_weak() _NOEXCEPT override {
         using _ControlBlockAlloc = typename __allocator_traits_rebind<_Alloc, __shared_ptr_emplace>::type;
         using _ControlBlockPointer = typename allocator_traits<_ControlBlockAlloc>::pointer;
         _ControlBlockAlloc __tmp(*__get_alloc());
@@ -689,7 +690,7 @@ public:
         {
             typedef typename __shared_ptr_default_allocator<_Yp>::type _AllocT;
             typedef __shared_ptr_pointer<typename unique_ptr<_Yp, _Dp>::pointer,
-                                        reference_wrapper<typename remove_reference<_Dp>::type>,
+                                        reference_wrapper<__libcpp_remove_reference_t<_Dp> >,
                                         _AllocT> _CntrlBlk;
             __cntrl_ = new _CntrlBlk(__r.get(), _VSTD::ref(__r.get_deleter()), _AllocT());
             __enable_weak_this(__r.get(), __r.get());
@@ -804,7 +805,7 @@ public:
     }
 
     _LIBCPP_HIDE_FROM_ABI
-    typename add_lvalue_reference<element_type>::type operator*() const _NOEXCEPT
+    __add_lvalue_reference_t<element_type> operator*() const _NOEXCEPT
     {
         return *__ptr_;
     }
@@ -857,7 +858,7 @@ public:
 
 #if _LIBCPP_STD_VER > 14
     _LIBCPP_HIDE_FROM_ABI
-    typename add_lvalue_reference<element_type>::type operator[](ptrdiff_t __i) const
+    __add_lvalue_reference_t<element_type> operator[](ptrdiff_t __i) const
     {
             static_assert(is_array<_Tp>::value,
                           "std::shared_ptr<T>::operator[] is only valid when T is an array type.");
@@ -906,7 +907,7 @@ private:
     _LIBCPP_HIDE_FROM_ABI
     void __enable_weak_this(const enable_shared_from_this<_Yp>* __e, _OrigPtr* __ptr) _NOEXCEPT
     {
-        typedef typename remove_cv<_Yp>::type _RawYp;
+        typedef __remove_cv_t<_Yp> _RawYp;
         if (__e && __e->__weak_this_.expired())
         {
             __e->__weak_this_ = shared_ptr<_RawYp>(*this,
@@ -1799,7 +1800,7 @@ operator<<(basic_ostream<_CharT, _Traits>& __os, shared_ptr<_Yp> const& __p);
 
 class _LIBCPP_TYPE_VIS __sp_mut
 {
-    void* __lx;
+    void* __lx_;
 public:
     void lock() _NOEXCEPT;
     void unlock() _NOEXCEPT;

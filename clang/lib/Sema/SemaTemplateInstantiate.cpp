@@ -200,6 +200,16 @@ MultiLevelTemplateArgumentList Sema::getTemplateInstantiationArgs(
           Result.addOuterTemplateArguments(InjectedType->template_arguments());
         }
       }
+      bool IsFriend = Rec->getFriendObjectKind() ||
+                      (Rec->getDescribedClassTemplate() &&
+                       Rec->getDescribedClassTemplate()->getFriendObjectKind());
+      if (IncludeContainingStructArgs && IsFriend &&
+          Rec->getNonTransparentDeclContext()->isFileContext() &&
+          (!Pattern || !Pattern->getLexicalDeclContext()->isFileContext())) {
+        Ctx = Rec->getLexicalDeclContext();
+        RelativeToPrimary = false;
+        continue;
+      }
     }
 
     Ctx = Ctx->getParent();
@@ -1859,8 +1869,9 @@ TemplateInstantiator::TransformTemplateTypeParmType(TypeLocBuilder &TLB,
         return Result;
       }
 
+      // PackIndex starts from last element.
+      PackIndex = Arg.pack_size() - 1 - getSema().ArgumentPackSubstitutionIndex;
       Arg = getPackSubstitutedTemplateArgument(getSema(), Arg);
-      PackIndex = getSema().ArgumentPackSubstitutionIndex;
     }
 
     assert(Arg.getKind() == TemplateArgument::Type &&
@@ -1906,12 +1917,13 @@ TemplateInstantiator::TransformSubstTemplateTypeParmPackType(
     return TL.getType();
   }
 
-  TemplateArgument Arg = TL.getTypePtr()->getArgumentPack();
-  Arg = getPackSubstitutedTemplateArgument(getSema(), Arg);
-
+  const SubstTemplateTypeParmPackType *T = TL.getTypePtr();
+  TemplateArgument Pack = T->getArgumentPack();
+  TemplateArgument Arg = getPackSubstitutedTemplateArgument(getSema(), Pack);
+  // PackIndex starts from last element.
   QualType Result = getSema().Context.getSubstTemplateTypeParmType(
-      TL.getTypePtr()->getReplacedParameter(), Arg.getAsType(),
-      getSema().ArgumentPackSubstitutionIndex);
+      T->getReplacedParameter(), Arg.getAsType(),
+      Pack.pack_size() - 1 - getSema().ArgumentPackSubstitutionIndex);
   SubstTemplateTypeParmTypeLoc NewTL
     = TLB.push<SubstTemplateTypeParmTypeLoc>(Result);
   NewTL.setNameLoc(TL.getNameLoc());
@@ -2782,6 +2794,7 @@ Sema::InstantiateClass(SourceLocation PointOfInstantiation,
     Instantiation->setInvalidDecl();
 
   TemplateDeclInstantiator Instantiator(*this, Instantiation, TemplateArgs);
+  Instantiator.setEvaluateConstraints(false);
   SmallVector<Decl*, 4> Fields;
   // Delay instantiation of late parsed attributes.
   LateInstantiatedAttrVec LateAttrs;

@@ -233,6 +233,19 @@ func.func @round(%f: f32, %v: vector<4xf32>, %t: tensor<4x4x?xf32>) {
   return
 }
 
+// CHECK-LABEL: func @roundeven(
+// CHECK-SAME:             %[[F:.*]]: f32, %[[V:.*]]: vector<4xf32>, %[[T:.*]]: tensor<4x4x?xf32>)
+func.func @roundeven(%f: f32, %v: vector<4xf32>, %t: tensor<4x4x?xf32>) {
+  // CHECK: %{{.*}} = math.roundeven %[[F]] : f32
+  %0 = math.roundeven %f : f32
+  // CHECK: %{{.*}} = math.roundeven %[[V]] : vector<4xf32>
+  %1 = math.roundeven %v : vector<4xf32>
+  // CHECK: %{{.*}} = math.roundeven %[[T]] : tensor<4x4x?xf32>
+  %2 = math.roundeven %t : tensor<4x4x?xf32>
+  return
+}
+
+
 // CHECK-LABEL: func @ipowi(
 // CHECK-SAME:             %[[I:.*]]: i32, %[[V:.*]]: vector<4xi32>, %[[T:.*]]: tensor<4x4x?xi32>)
 func.func @ipowi(%i: i32, %v: vector<4xi32>, %t: tensor<4x4x?xi32>) {
@@ -242,5 +255,17 @@ func.func @ipowi(%i: i32, %v: vector<4xi32>, %t: tensor<4x4x?xi32>) {
   %1 = math.ipowi %v, %v : vector<4xi32>
   // CHECK: %{{.*}} = math.ipowi %[[T]], %[[T]] : tensor<4x4x?xi32>
   %2 = math.ipowi %t, %t : tensor<4x4x?xi32>
+  return
+}
+
+// CHECK-LABEL: func @trunc(
+// CHECK-SAME:             %[[F:.*]]: f32, %[[V:.*]]: vector<4xf32>, %[[T:.*]]: tensor<4x4x?xf32>)
+func.func @trunc(%f: f32, %v: vector<4xf32>, %t: tensor<4x4x?xf32>) {
+  // CHECK: %{{.*}} = math.trunc %[[F]] : f32
+  %0 = math.trunc %f : f32
+  // CHECK: %{{.*}} = math.trunc %[[V]] : vector<4xf32>
+  %1 = math.trunc %v : vector<4xf32>
+  // CHECK: %{{.*}} = math.trunc %[[T]] : tensor<4x4x?xf32>
+  %2 = math.trunc %t : tensor<4x4x?xf32>
   return
 }

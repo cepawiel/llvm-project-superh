@@ -46,7 +46,7 @@ static LogicalResult runMLIRPasses(ModuleOp module) {
   applyPassManagerCLOptions(passManager);
 
   passManager.addPass(createGpuKernelOutliningPass());
-  passManager.addPass(memref::createFoldSubViewOpsPass());
+  passManager.addPass(memref::createFoldMemRefAliasOpsPass());
 
   passManager.addPass(createConvertGPUToSPIRVPass(/*mapMemorySpace=*/true));
   OpPassManager &modulePM = passManager.nest<spirv::ModuleOp>();
@@ -55,7 +55,7 @@ static LogicalResult runMLIRPasses(ModuleOp module) {
 
   passManager.addPass(createConvertGpuLaunchFuncToVulkanLaunchFuncPass());
   LowerToLLVMOptions llvmOptions(module.getContext(), DataLayout(module));
-  passManager.addPass(createMemRefToLLVMPass());
+  passManager.addPass(createMemRefToLLVMConversionPass());
   passManager.nest<func::FuncOp>().addPass(LLVM::createRequestCWrappersPass());
   passManager.addPass(createConvertFuncToLLVMPass(llvmOptions));
   passManager.addPass(createReconcileUnrealizedCastsPass());

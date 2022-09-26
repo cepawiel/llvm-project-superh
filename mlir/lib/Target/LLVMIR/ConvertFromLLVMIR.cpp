@@ -168,6 +168,10 @@ public:
   /// Imports `f` into the current module.
   LogicalResult processFunction(llvm::Function *f);
 
+  /// Converts function attributes of LLVM Function \p f
+  /// into LLVM dialect attributes of LLVMFuncOp \p funcOp.
+  void processFunctionAttributes(llvm::Function *f, LLVMFuncOp funcOp);
+
   /// Imports GV as a GlobalOp, creating it if it doesn't exist.
   GlobalOp processGlobal(llvm::GlobalVariable *gv);
 
@@ -247,16 +251,9 @@ private:
 
 Location Importer::processDebugLoc(const llvm::DebugLoc &loc,
                                    llvm::Instruction *inst) {
-  if (!loc && inst) {
-    std::string s;
-    llvm::raw_string_ostream os(s);
-    os << "llvm-imported-inst-%";
-    inst->printAsOperand(os, /*PrintType=*/false);
-    return FileLineColLoc::get(context, os.str(), 0, 0);
-  }
-  if (!loc) {
+  if (!loc)
     return unknownLoc;
-  }
+
   // FIXME: Obtain the filename from DILocationInfo.
   return FileLineColLoc::get(context, "imported-bitcode", loc.getLine(),
                              loc.getCol());
@@ -1128,8 +1125,7 @@ LogicalResult Importer::processInstruction(llvm::Instruction *inst) {
     if (!vec2)
       return failure();
 
-    ArrayAttr mask = b.getI32ArrayAttr(svInst->getShuffleMask());
-
+    SmallVector<int32_t> mask(svInst->getShuffleMask());
     instMap[inst] = b.create<ShuffleVectorOp>(loc, vec1, vec2, mask);
     return success();
   }
@@ -1158,6 +1154,15 @@ FlatSymbolRefAttr Importer::getPersonalityAsAttr(llvm::Function *f) {
   return FlatSymbolRefAttr();
 }
 
+void Importer::processFunctionAttributes(llvm::Function *func,
+                                         LLVMFuncOp funcOp) {
+  auto addNamedUnitAttr = [&](StringRef name) {
+    return funcOp->setAttr(name, UnitAttr::get(context));
+  };
+  if (func->hasFnAttribute(llvm::Attribute::ReadNone))
+    addNamedUnitAttr(LLVMDialect::getReadnoneAttrName());
+}
+
 LogicalResult Importer::processFunction(llvm::Function *f) {
   blocks.clear();
   instMap.clear();
@@ -1183,6 +1188,36 @@ LogicalResult Importer::processFunction(llvm::Function *f) {
       UnknownLoc::get(context), f->getName(), functionType,
       convertLinkageFromLLVM(f->getLinkage()), dsoLocal, cconv);
 
+  for (const auto &arg : llvm::enumerate(functionType.getParams())) {
+    llvm::SmallVector<NamedAttribute, 1> argAttrs;
+    if (auto *type = f->getParamByValType(arg.index())) {
+      auto mlirType = processType(type);
+      argAttrs.push_back(
+          NamedAttribute(b.getStringAttr(LLVMDialect::getByValAttrName()),
+                         TypeAttr::get(mlirType)));
+    }
+    if (auto *type = f->getParamByRefType(arg.index())) {
+      auto mlirType = processType(type);
+      argAttrs.push_back(
+          NamedAttribute(b.getStringAttr(LLVMDialect::getByRefAttrName()),
+                         TypeAttr::get(mlirType)));
+    }
+    if (auto *type = f->getParamStructRetType(arg.index())) {
+      auto mlirType = processType(type);
+      argAttrs.push_back(
+          NamedAttribute(b.getStringAttr(LLVMDialect::getStructRetAttrName()),
+                         TypeAttr::get(mlirType)));
+    }
+    if (auto *type = f->getParamInAllocaType(arg.index())) {
+      auto mlirType = processType(type);
+      argAttrs.push_back(
+          NamedAttribute(b.getStringAttr(LLVMDialect::getInAllocaAttrName()),
+                         TypeAttr::get(mlirType)));
+    }
+
+    fop.setArgAttrs(arg.index(), argAttrs);
+  }
+
   if (FlatSymbolRefAttr personality = getPersonalityAsAttr(f))
     fop->setAttr(b.getStringAttr("personality"), personality);
   else if (f->hasPersonalityFn())
@@ -1191,6 +1226,9 @@ LogicalResult Importer::processFunction(llvm::Function *f) {
 
   if (f->hasGC())
     fop.setGarbageCollectorAttr(b.getStringAttr(f->getGC()));
+
+  // Handle Function attributes.
+  processFunctionAttributes(f, fop);
 
   if (f->isDeclaration())
     return success();

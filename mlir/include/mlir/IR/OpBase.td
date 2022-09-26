@@ -297,7 +297,7 @@ class Variadic<Type type> : TypeConstraint<type.predicate, type.summary,
 // A nested variadic type constraint. It expands to zero or more variadic ranges
 // of the base type. This class is used for supporting variadic operands and
 // results. `variadicSegmentAttrName` should correspond to the name of an
-// I32ElementsAttr argument that provides the sizes of the inner variadic
+// DenseI32ArrayAttr argument that provides the sizes of the inner variadic
 // operand groups.
 class VariadicOfVariadic<Type type, string variadicSegmentAttrName>
     : Variadic<type> {
@@ -359,7 +359,7 @@ class AllOfType<list<Type> allowedTypes, string summary = "",
 
 // A type that satisfies additional predicates.
 class ConfinedType<Type type, list<Pred> predicates, string summary = "",
-                   string cppClassName = "::mlir::Type"> : Type<
+                   string cppClassName = type.cppClassName> : Type<
     And<!listconcat([type.predicate], !foreach(pred, predicates, pred))>,
     summary, cppClassName>;
 
@@ -1014,6 +1014,8 @@ class OptionalAttr<Attr attr> : Attr<attr.predicate, attr.summary> {
 // quotes.
 class DefaultValuedStrAttr<Attr attr, string val>
     : DefaultValuedAttr<attr, "\"" # val # "\"">;
+class DefaultValuedOptionalStrAttr<Attr attr, string val>
+    : DefaultValuedOptionalAttr<attr, "\"" # val # "\"">;
 
 //===----------------------------------------------------------------------===//
 // Primitive attribute kinds
@@ -1291,6 +1293,7 @@ class DenseArrayAttrBase<string denseAttrName, string cppType, string summaryNam
                      summaryName # " dense array attribute"> {
   let storageType = "::mlir::" # denseAttrName;
   let returnType = "::llvm::ArrayRef<" # cppType # ">";
+  let constBuilderCall = "$_builder.get" # denseAttrName # "($0)";
 }
 def DenseBoolArrayAttr : DenseArrayAttrBase<"DenseBoolArrayAttr", "bool", "i1">;
 def DenseI8ArrayAttr : DenseArrayAttrBase<"DenseI8ArrayAttr", "int8_t", "i8">;
@@ -2429,7 +2432,7 @@ class TCOpIsBroadcastableToRes<int opId, int resId> : And<[
 // 1) all operands involved are of shaped type and
 // 2) the indices are not out of range.
 class TCopVTEtAreSameAt<list<int> indices> : CPred<
-  "::llvm::is_splat(::llvm::map_range("
+  "::llvm::all_equal(::llvm::map_range("
       "::mlir::ArrayRef<unsigned>({" # !interleave(indices, ", ") # "}), "
       "[this](unsigned i) { return getElementTypeOrSelf(this->getOperand(i)); "
       "}))">;

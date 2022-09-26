@@ -29,9 +29,9 @@
 # We list important nonterminals as start symbols, rather than doing it for all
 # nonterminals by default, this reduces the number of states by 30% and LRTable
 # actions by 16%.
-_ := translation-unit
-_ := statement-seq
-_ := declaration-seq
+_ := translation-unit EOF
+_ := statement-seq EOF
+_ := declaration-seq EOF
 
 # gram.key
 #! we don't distinguish between namespaces and namespace aliases, as it's hard
@@ -330,7 +330,7 @@ block-declaration := opaque-enum-declaration
 nodeclspec-function-declaration := function-declarator ;
 alias-declaration := USING IDENTIFIER = defining-type-id ;
 simple-declaration := decl-specifier-seq init-declarator-list_opt ;
-simple-declaration := decl-specifier-seq ref-qualifier_opt [ identifier-list ] initializer ;
+simple-declaration := decl-specifier-seq ref-qualifier_opt [ identifier-list ] initializer ; [guard]
 static_assert-declaration := STATIC_ASSERT ( constant-expression ) ;
 static_assert-declaration := STATIC_ASSERT ( constant-expression , string-literal ) ;
 empty-declaration := ;

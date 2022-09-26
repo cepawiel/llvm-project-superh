@@ -97,6 +97,11 @@ func.func @test_shape_of(%arg0: tensor<?xf32>) -> tensor<?xindex> {
   return %0 : tensor<?xindex>
 }
 
+func.func @test_value_of(%arg0: !shape.value_shape) -> tensor<?xf32> {
+  %0 = shape.value_of %arg0 : tensor<?xf32>
+  return %0 : tensor<?xf32>
+}
+
 func.func @test_constraints() {
   %0 = shape.const_shape [] : !shape.shape
   %1 = shape.const_shape [1, 2, 3] : !shape.shape
@@ -261,6 +266,12 @@ func.func @shape_with_shape(%a : !shape.value_shape, %b : !shape.value_shape) ->
   %1 = shape.with_shape %b, %0 : !shape.value_shape, !shape.shape
   %2 = call @shape_equal_shapes(%a, %1) : (!shape.value_shape, !shape.value_shape) -> !shape.shape
   return %2 : !shape.shape
+}
+
+func.func @shape_with_shape_extent_tensor_type(%a : tensor<?x?x?xf32>, %b : !shape.value_shape) -> !shape.value_shape {
+  %0 = shape.shape_of %a : tensor<?x?x?xf32> -> tensor<3xindex>
+  %1 = shape.with_shape %b, %0 : !shape.value_shape, tensor<3xindex>
+  return %1 : !shape.value_shape
 }
 
 func.func @any_on_shape(%a : !shape.shape, %b : !shape.shape, %c : !shape.shape)

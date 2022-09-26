@@ -31,14 +31,17 @@ using namespace mlir::sparse_tensor;
 // Helper methods for the actual rewriting rules.
 //===---------------------------------------------------------------------===//
 
+// Helper method to match any typed zero.
+static bool isZeroValue(Value val) {
+  return matchPattern(val, m_Zero()) || matchPattern(val, m_AnyZeroFloat());
+}
+
 // Helper to detect a sparse tensor type operand.
 static bool isSparseTensor(OpOperand *op) {
   if (auto enc = getSparseTensorEncoding(op->get().getType())) {
-    ArrayRef<SparseTensorEncodingAttr::DimLevelType> dimTypes =
-        enc.getDimLevelType();
-    for (auto dimType : dimTypes)
-      if (dimType == SparseTensorEncodingAttr::DimLevelType::Compressed)
-        return true; // at least one compressed
+    if (llvm::is_contained(enc.getDimLevelType(),
+                           SparseTensorEncodingAttr::DimLevelType::Compressed))
+      return true;
   }
   return false;
 }
@@ -49,8 +52,7 @@ static bool isAlloc(OpOperand *op, bool isZero) {
   if (auto alloc = val.getDefiningOp<AllocTensorOp>()) {
     Value copy = alloc.getCopy();
     if (isZero)
-      return copy && (matchPattern(copy, m_Zero()) ||
-                      matchPattern(copy, m_AnyZeroFloat()));
+      return copy && isZeroValue(copy);
     return !copy;
   }
   return false;
@@ -102,13 +104,10 @@ static bool isZeroYield(GenericOp op) {
   if (auto arg = yieldOp.getOperand(0).dyn_cast<BlockArgument>()) {
     if (arg.getOwner()->getParentOp() == op) {
       OpOperand *t = op.getInputAndOutputOperands()[arg.getArgNumber()];
-      return matchPattern(t->get(), m_Zero()) ||
-             matchPattern(t->get(), m_AnyZeroFloat());
+      return isZeroValue(t->get());
     }
-  } else if (auto *def = yieldOp.getOperand(0).getDefiningOp()) {
-    return matchPattern(def, m_Zero()) || matchPattern(def, m_AnyZeroFloat());
   }
-  return false;
+  return isZeroValue(yieldOp.getOperand(0));
 }
 
 //===---------------------------------------------------------------------===//
@@ -128,9 +127,15 @@ public:
         !isAlloc(op.getOutputOperand(0), /*isZero=*/false) || !isZeroYield(op))
       return failure();
     auto outputType = op.getResult(0).getType().cast<RankedTensorType>();
-    if (!outputType.hasStaticShape() || getSparseTensorEncoding(outputType))
-      return failure();
+    // Yielding zero on newly allocated (all-zero) sparse tensors can be
+    // optimized out directly (regardless of dynamic or static size).
+    if (getSparseTensorEncoding(outputType)) {
+      rewriter.replaceOp(op, op.getOutputOperand(0)->get());
+      return success();
+    }
     // Incorporate zero value into allocation copy.
+    if (!outputType.hasStaticShape())
+      return failure();
     Value zero = constantZero(rewriter, op.getLoc(), op.getResult(0).getType());
     AllocTensorOp a =
         op.getOutputOperand(0)->get().getDefiningOp<AllocTensorOp>();
@@ -265,7 +270,8 @@ public:
     // All other cases are handled elsewhere.
     if (encDst && encSrc) {
       return failure();
-    } else if (encSrc) {
+    }
+    if (encSrc) {
       RankedTensorType rtp =
           op.getSrc().getType().template cast<RankedTensorType>();
       auto denseTp =
@@ -294,8 +300,10 @@ public:
 // Methods that add patterns described in this file to a pattern list.
 //===---------------------------------------------------------------------===//
 
-void mlir::populateSparseTensorRewriting(RewritePatternSet &patterns) {
+void mlir::populateSparseTensorRewriting(RewritePatternSet &patterns,
+                                         bool /*enableRT*/) {
   patterns.add<FoldInvariantYield, FuseSparseMultiplyOverAdd,
                ReshapeRewriter<tensor::ExpandShapeOp>,
                ReshapeRewriter<tensor::CollapseShapeOp>>(patterns.getContext());
+  // TODO: If RT not enabled, rewrite concatenate ops, etc here.
 }
