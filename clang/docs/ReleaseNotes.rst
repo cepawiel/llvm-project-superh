@@ -311,6 +311,22 @@ C2x Feature Support
   ``-Wunused-label`` warning.
 - Implemented `WG14 N2508 <https://www.open-std.org/jtc1/sc22/wg14/www/docs/n2508.pdf>`_,
   so labels can placed everywhere inside a compound statement.
+- Implemented `WG14 N2927 <https://www.open-std.org/jtc1/sc22/wg14/www/docs/n2927.htm>`_,
+  the Not-so-magic ``typeof`` operator. Also implemented
+  `WG14 N2930 <https://www.open-std.org/jtc1/sc22/wg14/www/docs/n2930.pdf>`_,
+  renaming ``remove_quals``, so the ``typeof_unqual`` operator is also
+  supported. Both of these operators are supported only in C2x mode. The
+  ``typeof`` operator specifies the type of the given parenthesized expression
+  operand or type name, including all qualifiers. The ``typeof_unqual``
+  operator is similar to ``typeof`` except that all qualifiers are removed,
+  including atomic type qualification and type attributes which behave like a
+  qualifier, such as an address space attribute.
+
+  .. code-block:: c
+
+    __attribute__((address_space(1))) const _Atomic int Val;
+    typeof(Val) OtherVal; // type is '__attribute__((address_space(1))) const _Atomic int'
+    typeof_unqual(Val) OtherValUnqual; // type is 'int'
 
 C++ Language Changes in Clang
 -----------------------------
@@ -356,6 +372,10 @@ C++20 Feature Support
   the time of checking, which should now allow the libstdc++ ranges implementation
   to work for at least trivial examples.  This fixes
   `Issue 44178 <https://github.com/llvm/llvm-project/issues/44178>`_.
+- Clang implements DR2621, correcting a defect in ``using enum`` handling.  The
+  name is found via ordinary lookup so typedefs are found.
+- Implemented `P0634r3 <https://www.open-std.org/jtc1/sc22/wg21/docs/papers/2018/p0634r3.html>`_,
+  which removes the requirement for the ``typename`` keyword in certain contexts.
 
 C++2b Feature Support
 ^^^^^^^^^^^^^^^^^^^^^
@@ -445,10 +465,15 @@ Static Analyzer
   ``scanbuild`` was also updated accordingly.
   Passing these flags will result in a hard error.
 
-.. _release-notes-ubsan:
+.. _release-notes-sanitizers:
 
-Undefined Behavior Sanitizer (UBSan)
-------------------------------------
+Sanitizers
+----------
+- ``-fsanitize-memory-param-retval`` is turned on by default. With
+  ``-fsanitize=memory``, passing uninitialized variables to functions and
+  returning uninitialized variables from functions is more aggressively
+  reported. ``-fno-sanitize-memory-param-retval`` restores the previous
+  behavior.
 
 Core Analysis Improvements
 ==========================
