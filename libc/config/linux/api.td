@@ -171,7 +171,7 @@ def StdlibAPI : PublicAPI<"stdlib.h"> {
 }
 
 def TimeAPI : PublicAPI<"time.h"> {
-  let Types = ["time_t", "struct tm", "struct timespec"];
+  let Types = ["time_t", "struct tm", "struct timespec", "clockid_t",];
 }
 
 def ErrnoAPI : PublicAPI<"errno.h"> {
@@ -191,6 +191,10 @@ def ErrnoAPI : PublicAPI<"errno.h"> {
     MacroDefineIfNot<"ERFKILL", "132">,
     MacroDefineIfNot<"EHWPOISON", "133">,
   ];
+}
+
+def SchedAPI : PublicAPI<"sched.h"> {
+  let Types = ["pid_t", "size_t", "cpu_set_t"];
 }
 
 def SysMManAPI : PublicAPI<"sys/mman.h"> {

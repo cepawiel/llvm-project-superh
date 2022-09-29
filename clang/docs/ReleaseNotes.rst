@@ -242,6 +242,21 @@ Non-comprehensive list of changes in this release
 - Unicode support has been updated to support Unicode 15.0.
   New unicode codepoints are supported as appropriate in diagnostics,
   C and C++ identifiers, and escape sequences.
+- Clang now supports loading multiple configuration files. The files from
+  default configuration paths are loaded first, unless ``--no-default-config``
+  option is used. All files explicitly specified using ``--config=`` option
+  are loaded afterwards.
+- When loading default configuration files, clang now unconditionally uses
+  the real target triple (respecting options such as ``--target=`` and ``-m32``)
+  rather than the executable prefix. The respective configuration files are
+  also loaded when clang is called via an executable without a prefix (e.g.
+  plain ``clang``).
+- Default configuration paths were partially changed. Clang now attempts to load
+  ``<triple>-<driver>.cfg`` first, and falls back to loading both
+  ``<driver>.cfg`` and ``<triple>.cfg`` if the former is not found. `Triple`
+  is the target triple and `driver` first tries the canonical name
+  for the driver (respecting ``--driver-mode=``), and then the name found
+  in the executable.
 
 New Compiler Flags
 ------------------
@@ -257,12 +272,16 @@ New Compiler Flags
   `::operator new(size_­t, std::aligned_val_t, nothrow_­t)` if there is
   `get_­return_­object_­on_­allocation_­failure`. We feel this is more consistent
   with the intention.
+- Added ``--no-default-config`` to disable automatically loading configuration
+  files using default paths.
 
 Deprecated Compiler Flags
 -------------------------
 
 Modified Compiler Flags
 -----------------------
+- Clang now permits specifying ``--config=`` multiple times, to load multiple
+  configuration files.
 
 Removed Compiler Flags
 -------------------------
@@ -349,7 +368,7 @@ C++ Language Changes in Clang
 C++20 Feature Support
 ^^^^^^^^^^^^^^^^^^^^^
 - Support capturing structured bindings in lambdas
-  (`P1091R3 <https://wg21.link/p1091r3>`_ and `P1381R1 <https://wg21.link/P1381R1>`).
+  (`P1091R3 <https://wg21.link/p1091r3>`_ and `P1381R1 <https://wg21.link/P1381R1>`_).
   This fixes issues `Issue 52720 <https://github.com/llvm/llvm-project/issues/52720>`_,
   `Issue 54300 <https://github.com/llvm/llvm-project/issues/54300>`_,
   `Issue 54301 <https://github.com/llvm/llvm-project/issues/54301>`_,
@@ -390,6 +409,7 @@ C++2b Feature Support
 ^^^^^^^^^^^^^^^^^^^^^
 
 - Support label at end of compound statement (`P2324 <https://wg21.link/p2324r2>`_).
+- Implemented `P1169R4: static operator() <https://wg21.link/P1169R4>`_.
 
 CUDA/HIP Language Changes in Clang
 ----------------------------------
