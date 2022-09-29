@@ -118,6 +118,8 @@ bool elf::link(ArrayRef<const char *> args, llvm::raw_ostream &stdoutOS,
   script = std::make_unique<LinkerScript>();
   symtab = std::make_unique<SymbolTable>();
 
+  symAux.emplace_back();
+
   partitions.clear();
   partitions.emplace_back();
 
@@ -2269,9 +2271,14 @@ static void combineVersionedSymbol(Symbol &sym,
     map.try_emplace(&sym, sym2);
     // If both foo@v1 and foo@@v1 are defined and non-weak, report a
     // duplicate definition error.
-    if (sym.isDefined())
+    if (sym.isDefined()) {
       sym2->checkDuplicate(cast<Defined>(sym));
-    sym2->resolve(sym);
+      sym2->resolve(cast<Defined>(sym));
+    } else if (sym.isUndefined()) {
+      sym2->resolve(cast<Undefined>(sym));
+    } else {
+      sym2->resolve(cast<SharedSymbol>(sym));
+    }
     // Eliminate foo@v1 from the symbol table.
     sym.symbolKind = Symbol::PlaceholderKind;
     sym.isUsedInRegularObj = false;

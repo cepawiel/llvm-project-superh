@@ -201,18 +201,10 @@ public:
   // truncated by Symbol::parseSymbolVersion().
   const char *getVersionSuffix() const { return nameData + nameSize; }
 
-  uint32_t getGotIdx() const {
-    return auxIdx == uint32_t(-1) ? uint32_t(-1) : symAux[auxIdx].gotIdx;
-  }
-  uint32_t getPltIdx() const {
-    return auxIdx == uint32_t(-1) ? uint32_t(-1) : symAux[auxIdx].pltIdx;
-  }
-  uint32_t getTlsDescIdx() const {
-    return auxIdx == uint32_t(-1) ? uint32_t(-1) : symAux[auxIdx].tlsDescIdx;
-  }
-  uint32_t getTlsGdIdx() const {
-    return auxIdx == uint32_t(-1) ? uint32_t(-1) : symAux[auxIdx].tlsGdIdx;
-  }
+  uint32_t getGotIdx() const { return symAux[auxIdx].gotIdx; }
+  uint32_t getPltIdx() const { return symAux[auxIdx].pltIdx; }
+  uint32_t getTlsDescIdx() const { return symAux[auxIdx].tlsDescIdx; }
+  uint32_t getTlsGdIdx() const { return symAux[auxIdx].tlsGdIdx; }
 
   bool isInGot() const { return getGotIdx() != uint32_t(-1); }
   bool isInPlt() const { return getPltIdx() != uint32_t(-1); }
@@ -241,7 +233,11 @@ public:
   // For example, if "this" is an undefined symbol and a new symbol is
   // a defined symbol, "this" is replaced with the new symbol.
   void mergeProperties(const Symbol &other);
-  void resolve(const Symbol &other);
+  void resolve(const Undefined &other);
+  void resolve(const CommonSymbol &other);
+  void resolve(const Defined &other);
+  void resolve(const LazyObject &other);
+  void resolve(const SharedSymbol &other);
 
   // If this is a lazy symbol, extract an input file and add the symbol
   // in the file to the symbol table. Calling this function on
@@ -251,12 +247,6 @@ public:
   void checkDuplicate(const Defined &other) const;
 
 private:
-  void resolveUndefined(const Undefined &other);
-  void resolveCommon(const CommonSymbol &other);
-  void resolveDefined(const Defined &other);
-  void resolveLazy(const LazyObject &other);
-  void resolveShared(const SharedSymbol &other);
-
   bool shouldReplace(const Defined &other) const;
 
 protected:
@@ -330,7 +320,7 @@ public:
             NEEDS_TLSGD_TO_IE | NEEDS_GOT_DTPREL | NEEDS_TLSIE);
   }
   void allocateAux() {
-    assert(auxIdx == uint32_t(-1));
+    assert(auxIdx == 0);
     auxIdx = symAux.size();
     symAux.emplace_back();
   }
@@ -550,7 +540,6 @@ template <typename... T> Defined *makeDefined(T &&...args) {
   auto *sym = getSpecificAllocSingleton<SymbolUnion>().Allocate();
   memset(sym, 0, sizeof(Symbol));
   auto &s = *new (reinterpret_cast<Defined *>(sym)) Defined(std::forward<T>(args)...);
-  s.auxIdx = -1;
   return &s;
 }
 
