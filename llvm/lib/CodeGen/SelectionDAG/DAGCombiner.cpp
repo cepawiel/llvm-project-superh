@@ -2196,7 +2196,12 @@ static SDValue foldSelectWithIdentityConstant(SDNode *N, SelectionDAG &DAG,
   if (N1.getOpcode() != ISD::VSELECT || !N1.hasOneUse())
     return SDValue();
 
+  // We can't hoist div/rem because of immediate UB (not speculatable).
   unsigned Opcode = N->getOpcode();
+  if (Opcode == ISD::SDIV || Opcode == ISD::UDIV ||
+      Opcode == ISD::SREM || Opcode == ISD::UREM)
+    return SDValue();
+
   EVT VT = N->getValueType(0);
   SDValue Cond = N1.getOperand(0);
   SDValue TVal = N1.getOperand(1);
@@ -14275,7 +14280,9 @@ SDValue DAGCombiner::visitFADDForFMACombine(SDNode *N) {
         SDValue D = FMul.getOperand(1);
         SDValue CDE = DAG.getNode(PreferredFusedOpcode, SL, VT, C, D, E);
         DAG.ReplaceAllUsesOfValueWith(FMul, CDE);
-        return FMA;
+        // Replacing the inner FMul could cause the outer FMA to be simplified
+        // away.
+        return FMA.getOpcode() == ISD::DELETED_NODE ? SDValue() : FMA;
       }
 
       TmpFMA = TmpFMA->getOperand(2);

@@ -1256,9 +1256,12 @@ Instruction *InstCombinerImpl::foldOpIntoPhi(Instruction &I, PHINode *PN) {
   }
 
   for (unsigned i = 0; i != NumPHIValues; ++i) {
-    if (NewPhiValues[i])
-      NewPN->addIncoming(NewPhiValues[i], PN->getIncomingBlock(i));
-    else
+    if (NewPhiValues[i]) {
+      if (NewPhiValues[i] == PN)
+        NewPN->addIncoming(NewPN, PN->getIncomingBlock(i));
+      else
+        NewPN->addIncoming(NewPhiValues[i], PN->getIncomingBlock(i));
+    } else
       NewPN->addIncoming(Clone, PN->getIncomingBlock(i));
   }
 
