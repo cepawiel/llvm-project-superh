@@ -434,8 +434,7 @@ bool ConstraintInfo::doesHold(CmpInst::Predicate Pred, Value *A,
     return false;
 
   return NewVariables.empty() && R.Preconditions.empty() && !R.IsEq &&
-         !R.empty() &&
-         getCS(CmpInst::isSigned(Pred)).isConditionImplied(R.Coefficients);
+         !R.empty() && getCS(R.IsSigned).isConditionImplied(R.Coefficients);
 }
 
 void ConstraintInfo::transferToOtherSystem(
@@ -579,18 +578,32 @@ void State::addInfoFor(BasicBlock &BB) {
   if (!Br || !Br->isConditional())
     return;
 
-  // If the condition is an OR of 2 compares and the false successor only has
-  // the current block as predecessor, queue both negated conditions for the
+  // If the condition is a chain of ORs and the false successor only has
+  // the current block as predecessor, queue the negated conditions for the
   // false successor.
   Value *Op0, *Op1;
-  if (match(Br->getCondition(), m_LogicalOr(m_Value(Op0), m_Value(Op1))) &&
-      isa<ICmpInst>(Op0) && isa<ICmpInst>(Op1)) {
+  if (match(Br->getCondition(), m_LogicalOr(m_Value(Op0), m_Value(Op1)))) {
     BasicBlock *FalseSuccessor = Br->getSuccessor(1);
     if (canAddSuccessor(BB, FalseSuccessor)) {
-      WorkList.emplace_back(DT.getNode(FalseSuccessor), cast<ICmpInst>(Op0),
-                            true);
-      WorkList.emplace_back(DT.getNode(FalseSuccessor), cast<ICmpInst>(Op1),
-                            true);
+      SmallVector<Value *> CondWorkList;
+      SmallPtrSet<Value *, 8> SeenCond;
+      auto QueueValue = [&CondWorkList, &SeenCond](Value *V) {
+        if (SeenCond.insert(V).second)
+          CondWorkList.push_back(V);
+      };
+      QueueValue(Op0);
+      QueueValue(Op1);
+      while (!CondWorkList.empty()) {
+        Value *Cur = CondWorkList.pop_back_val();
+        if (auto *Cmp = dyn_cast<ICmpInst>(Cur)) {
+          WorkList.emplace_back(DT.getNode(FalseSuccessor), Cmp, true);
+          continue;
+        }
+        if (match(Cur, m_LogicalOr(m_Value(Op0), m_Value(Op1)))) {
+          QueueValue(Op0);
+          QueueValue(Op1);
+        }
+      }
     }
     return;
   }
@@ -681,7 +694,7 @@ tryToSimplifyOverflowMath(IntrinsicInst *II, ConstraintInfo &Info,
     if (R.size() < 2 || !NewVariables.empty() || !R.isValid(Info))
       return false;
 
-    auto &CSToUse = Info.getCS(CmpInst::isSigned(Pred));
+    auto &CSToUse = Info.getCS(R.IsSigned);
     return CSToUse.isConditionImplied(R.Coefficients);
   };
 
@@ -744,10 +757,20 @@ static bool eliminateConstraints(Function &F, DominatorTree &DT) {
   // Next, sort worklist by dominance, so that dominating blocks and conditions
   // come before blocks and conditions dominated by them. If a block and a
   // condition have the same numbers, the condition comes before the block, as
-  // it holds on entry to the block.
-  stable_sort(S.WorkList, [](const ConstraintOrBlock &A, const ConstraintOrBlock &B) {
-    return std::tie(A.NumIn, A.IsBlock) < std::tie(B.NumIn, B.IsBlock);
-  });
+  // it holds on entry to the block. Also make sure conditions with constant
+  // operands come before conditions without constant operands. This increases
+  // the effectiveness of the current signed <-> unsigned fact transfer logic.
+  stable_sort(
+      S.WorkList, [](const ConstraintOrBlock &A, const ConstraintOrBlock &B) {
+        auto HasNoConstOp = [](const ConstraintOrBlock &B) {
+          return !B.IsBlock && !isa<ConstantInt>(B.Condition->getOperand(0)) &&
+                 !isa<ConstantInt>(B.Condition->getOperand(1));
+        };
+        bool NoConstOpA = HasNoConstOp(A);
+        bool NoConstOpB = HasNoConstOp(B);
+        return std::tie(A.NumIn, A.IsBlock, NoConstOpA) <
+               std::tie(B.NumIn, B.IsBlock, NoConstOpB);
+      });
 
   SmallVector<Instruction *> ToRemove;
 
