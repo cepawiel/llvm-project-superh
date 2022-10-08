@@ -19,6 +19,7 @@
 #include "llvm/Analysis/ConstraintSystem.h"
 #include "llvm/Analysis/GlobalsModRef.h"
 #include "llvm/Analysis/ValueTracking.h"
+#include "llvm/IR/DataLayout.h"
 #include "llvm/IR/Dominators.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/IRBuilder.h"
@@ -646,8 +647,6 @@ void ConstraintInfo::addFact(CmpInst::Predicate Pred, Value *A, Value *B,
              A->printAsOperand(dbgs(), false); dbgs() << ", ";
              B->printAsOperand(dbgs(), false); dbgs() << "'\n");
   bool Added = false;
-  assert(CmpInst::isSigned(Pred) == R.IsSigned &&
-         "condition and constraint signs must match");
   auto &CSToUse = getCS(R.IsSigned);
   if (R.Coefficients.empty())
     return;
@@ -826,7 +825,22 @@ static bool eliminateConstraints(Function &F, DominatorTree &DT) {
 
         LLVM_DEBUG(dbgs() << "Checking " << *Cmp << "\n");
         SmallVector<Value *> NewVariables;
-        auto R = Info.getConstraint(Cmp, NewVariables);
+        CmpInst::Predicate Pred = Cmp->getPredicate();
+        Value *A = Cmp->getOperand(0);
+        Value *B = Cmp->getOperand(1);
+        const DataLayout &DL = Cmp->getModule()->getDataLayout();
+
+        // If both operands are known to be non-negative, change signed
+        // predicates to unsigned ones. This increases the reasoning
+        // effectiveness in combination with the signed <-> unsigned transfer
+        // logic.
+        if (CmpInst::isSigned(Pred) &&
+            isKnownNonNegative(A, DL,
+                               /*Depth=*/MaxAnalysisRecursionDepth - 1) &&
+            isKnownNonNegative(B, DL, /*Depth=*/MaxAnalysisRecursionDepth - 1))
+          Pred = CmpInst::getUnsignedPredicate(Pred);
+
+        auto R = Info.getConstraint(Pred, A, B, NewVariables);
         if (R.IsEq || R.empty() || !NewVariables.empty() || !R.isValid(Info))
           continue;
 

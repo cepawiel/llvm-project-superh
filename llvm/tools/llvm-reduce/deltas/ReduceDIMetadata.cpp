@@ -27,13 +27,13 @@ using namespace llvm;
 using MDNodeList = SmallVector<MDNode *>;
 
 void identifyUninterestingMDNodes(Oracle &O, MDNodeList &MDs) {
-  DenseSet<std::tuple<MDNode *, size_t, MDNode *>> Tuples;
+  SetVector<std::tuple<MDNode *, size_t, MDNode *>> Tuples;
   std::vector<MDNode *> ToLook;
-  DenseSet<MDNode *> Visited;
+  SetVector<MDNode *> Visited;
 
   // Start by looking at the attachments we collected
   for (const auto &NMD : MDs)
-    if (NMD && !Visited.count(NMD))
+    if (NMD)
       ToLook.push_back(NMD);
 
   while (!ToLook.empty()) {
@@ -66,7 +66,7 @@ void identifyUninterestingMDNodes(Oracle &O, MDNodeList &MDs) {
     SmallVector<Metadata *, 16> TN;
     for (size_t I = 0; I < Tup->getNumOperands(); ++I) {
       // Ignore any operands that are not DebugInfo metadata nodes.
-      if (MDNode *OMD = dyn_cast_or_null<DINode>(Tup->getOperand(I)))
+      if (isa_and_nonnull<DINode>(Tup->getOperand(I)))
         // Don't add uninteresting operands to the tuple.
         if (!O.shouldKeep())
           continue;
