@@ -229,8 +229,8 @@ N: Evgeniy Stepanov
 E: eugenis@google.com
 D: MemorySanitizer (LLVM part)
 
-N: Craig Topper
-E: craig.topper@gmail.com
+N: Phoebe Wang
+E: phoebe.wang@intel.com
 D: X86 Backend
 
 N: Ulrich Weigand
