@@ -64,7 +64,7 @@ code bases.
 - ``-Wincompatible-function-pointer-types`` now defaults to an error in all C
   language modes. It may be downgraded to a warning with
   ``-Wno-error=incompatible-function-pointer-types`` or disabled entirely with
-  ``-Wno-implicit-function-pointer-types``.
+  ``-Wno-incompatible-function-pointer-types``.
 
   **NOTE:** We recommend that projects using configure scripts verify that the
   results do not change before/after setting
@@ -116,6 +116,18 @@ code bases.
     template<> void S<int>::f() {};  // Error: cannot define dllimport function.
 
   These errors also match MSVC's behavior.
+
+- Clang now diagnoses indirection of ``void *`` in C++ mode as a warning which
+  defaults to an error. This is compatible with ISO C++, GCC, ICC, and MSVC. This
+  is also now a SFINAE error so constraint checking and SFINAE checking can be
+  compatible with other compilers. It is expected that this will be upgraded to
+  an error-only diagnostic in the next Clang release.
+
+  .. code-block:: c++
+
+    void func(void *p) {
+      *p; // Now diagnosed as a warning-as-error.
+    }
 
 What's New in Clang |release|?
 ==============================
