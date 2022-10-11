@@ -156,6 +156,7 @@ set(TARGET_LIBC_ENTRYPOINTS
     libc.src.unistd.getpid
     libc.src.unistd.getppid
     libc.src.unistd.getuid
+    libc.src.unistd.isatty
     libc.src.unistd.link
     libc.src.unistd.linkat
     libc.src.unistd.lseek
@@ -167,6 +168,7 @@ set(TARGET_LIBC_ENTRYPOINTS
     libc.src.unistd.rmdir
     libc.src.unistd.symlink
     libc.src.unistd.symlinkat
+    libc.src.unistd.sysconf
     libc.src.unistd.truncate
     libc.src.unistd.unlink
     libc.src.unistd.unlinkat
@@ -387,6 +389,13 @@ if(LLVM_LIBC_FULL_BUILD)
     libc.src.signal.sigprocmask
     libc.src.signal.sigfillset
     libc.src.signal.signal
+
+    # spawn.h entrypoints
+    libc.src.spawn.posix_spawn_file_actions_addclose
+    libc.src.spawn.posix_spawn_file_actions_adddup2
+    libc.src.spawn.posix_spawn_file_actions_addopen
+    libc.src.spawn.posix_spawn_file_actions_destroy
+    libc.src.spawn.posix_spawn_file_actions_init
 
     # threads.h entrypoints
     libc.src.threads.call_once
