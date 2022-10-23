@@ -2271,8 +2271,8 @@ SDValue DAGCombiner::foldBinOpIntoSelect(SDNode *BO) {
   // or X, (select Cond, -1, 0) --> select Cond, -1, X
   bool CanFoldNonConst =
       (BinOpcode == ISD::AND || BinOpcode == ISD::OR) &&
-      (isNullOrNullSplat(CT) || isAllOnesOrAllOnesSplat(CT)) &&
-      (isNullOrNullSplat(CF) || isAllOnesOrAllOnesSplat(CF));
+      ((isNullOrNullSplat(CT) && isAllOnesOrAllOnesSplat(CF)) ||
+       (isNullOrNullSplat(CF) && isAllOnesOrAllOnesSplat(CT)));
 
   SDValue CBO = BO->getOperand(SelOpNo ^ 1);
   if (!CanFoldNonConst &&
@@ -2280,23 +2280,41 @@ SDValue DAGCombiner::foldBinOpIntoSelect(SDNode *BO) {
       !DAG.isConstantFPBuildVectorOrConstantFP(CBO))
     return SDValue();
 
-  // We have a select-of-constants followed by a binary operator with a
-  // constant. Eliminate the binop by pulling the constant math into the select.
-  // Example: add (select Cond, CT, CF), CBO --> select Cond, CT + CBO, CF + CBO
   SDLoc DL(Sel);
-  SDValue NewCT = SelOpNo ? DAG.getNode(BinOpcode, DL, VT, CBO, CT)
-                          : DAG.getNode(BinOpcode, DL, VT, CT, CBO);
-  if (!CanFoldNonConst && !NewCT.isUndef() &&
-      !isConstantOrConstantVector(NewCT, true) &&
-      !DAG.isConstantFPBuildVectorOrConstantFP(NewCT))
-    return SDValue();
+  SDValue NewCT, NewCF;
 
-  SDValue NewCF = SelOpNo ? DAG.getNode(BinOpcode, DL, VT, CBO, CF)
-                          : DAG.getNode(BinOpcode, DL, VT, CF, CBO);
-  if (!CanFoldNonConst && !NewCF.isUndef() &&
-      !isConstantOrConstantVector(NewCF, true) &&
-      !DAG.isConstantFPBuildVectorOrConstantFP(NewCF))
-    return SDValue();
+  if (CanFoldNonConst) {
+    // If CBO is an opaque constant, we can't rely on getNode to constant fold.
+    if ((BinOpcode == ISD::AND && isNullOrNullSplat(CT)) ||
+        (BinOpcode == ISD::OR && isAllOnesOrAllOnesSplat(CT)))
+      NewCT = CT;
+    else
+      NewCT = CBO;
+
+    if ((BinOpcode == ISD::AND && isNullOrNullSplat(CF)) ||
+        (BinOpcode == ISD::OR && isAllOnesOrAllOnesSplat(CF)))
+      NewCF = CF;
+    else
+      NewCF = CBO;
+  } else {
+    // We have a select-of-constants followed by a binary operator with a
+    // constant. Eliminate the binop by pulling the constant math into the
+    // select. Example: add (select Cond, CT, CF), CBO --> select Cond, CT +
+    // CBO, CF + CBO
+    NewCT = SelOpNo ? DAG.getNode(BinOpcode, DL, VT, CBO, CT)
+                    : DAG.getNode(BinOpcode, DL, VT, CT, CBO);
+    if (!CanFoldNonConst && !NewCT.isUndef() &&
+        !isConstantOrConstantVector(NewCT, true) &&
+        !DAG.isConstantFPBuildVectorOrConstantFP(NewCT))
+      return SDValue();
+
+    NewCF = SelOpNo ? DAG.getNode(BinOpcode, DL, VT, CBO, CF)
+                    : DAG.getNode(BinOpcode, DL, VT, CF, CBO);
+    if (!CanFoldNonConst && !NewCF.isUndef() &&
+        !isConstantOrConstantVector(NewCF, true) &&
+        !DAG.isConstantFPBuildVectorOrConstantFP(NewCF))
+      return SDValue();
+  }
 
   SDValue SelectOp = DAG.getSelect(DL, VT, Sel.getOperand(0), NewCT, NewCF);
   SelectOp->setFlags(BO->getFlags());
@@ -3939,6 +3957,30 @@ SDValue DAGCombiner::visitMULFIX(SDNode *N) {
   return SDValue();
 }
 
+// Fold (mul (sra X, BW-1), Y) -> (neg (and (sra X, BW-1), Y))
+static SDValue foldSraMulToAndNeg(SDNode *N, SDValue N0, SDValue N1,
+                                  SelectionDAG &DAG) {
+  if (N0.getOpcode() != ISD::SRA)
+    return SDValue();
+
+  EVT VT = N->getValueType(0);
+
+  // TODO: Use computeNumSignBits() == BitWidth?
+  unsigned BitWidth = VT.getScalarSizeInBits();
+  ConstantSDNode *ShiftAmt = isConstOrConstSplat(N0.getOperand(1));
+  if (!ShiftAmt || ShiftAmt->getAPIntValue() != (BitWidth - 1))
+    return SDValue();
+
+  // If optimizing for minsize, we don't want to increase the number of
+  // instructions.
+  if (DAG.getMachineFunction().getFunction().hasMinSize())
+    return SDValue();
+
+  SDLoc dl(N);
+  SDValue And = DAG.getNode(ISD::AND, dl, VT, N0, N1);
+  return DAG.getNode(ISD::SUB, dl, VT, DAG.getConstant(0, dl, VT), And);
+}
+
 SDValue DAGCombiner::visitMUL(SDNode *N) {
   SDValue N0 = N->getOperand(0);
   SDValue N1 = N->getOperand(1);
@@ -4148,6 +4190,11 @@ SDValue DAGCombiner::visitMUL(SDNode *N) {
       return DAG.getNode(ISD::AND, DL, VT, N0, DAG.getBuildVector(VT, DL, Mask));
     }
   }
+
+  if (SDValue V = foldSraMulToAndNeg(N, N0, N1, DAG))
+    return V;
+  if (SDValue V = foldSraMulToAndNeg(N, N1, N0, DAG))
+    return V;
 
   // reassociate mul
   if (SDValue RMUL = reassociateOps(ISD::MUL, DL, N0, N1, N->getFlags()))
