@@ -255,6 +255,9 @@ Bug Fixes
 - Reject non-type template arguments formed by casting a non-zero integer
   to a pointer in pre-C++17 modes, instead of treating them as null
   pointers.
+- Fix missing diagnostics for uses of declarations when performing typename access,
+  such as when performing member access on a '[[deprecated]]' type alias.
+  `Issue 58547 <https://github.com/llvm/llvm-project/issues/58547>`
 
 Improvements to Clang's diagnostics
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -325,9 +328,9 @@ Improvements to Clang's diagnostics
   pointers is improved to include the type of the array and whether it's cast
   to another type. This should improve comprehension for why an index is
   out-of-bounds.
-- Clang now correctly point to the problematic parameter for the ``-Wnonnull``
-  warning.
-  This fixes `Issue 58273 <https://github.com/llvm/llvm-project/issues/58273>`_.
+- Clang now correctly points to the problematic parameter for the ``-Wnonnull``
+  warning. This fixes
+  `Issue 58273 <https://github.com/llvm/llvm-project/issues/58273>`_.
 
 Non-comprehensive list of changes in this release
 -------------------------------------------------
