@@ -34,7 +34,6 @@
 #include "clang/AST/LambdaCapture.h"
 #include "clang/AST/NestedNameSpecifier.h"
 #include "clang/AST/OperationKinds.h"
-#include "clang/AST/ParentMapContext.h"
 #include "clang/AST/Stmt.h"
 #include "clang/AST/StmtCXX.h"
 #include "clang/AST/StmtObjC.h"
@@ -1542,7 +1541,7 @@ ExpectedType ASTNodeImporter::VisitSubstTemplateTypeParmPackType(
     return ToArgumentPack.takeError();
 
   return Importer.getToContext().getSubstTemplateTypeParmPackType(
-      *ReplacedOrErr, T->getIndex(), T->getFinal(), *ToArgumentPack);
+      *ReplacedOrErr, T->getIndex(), *ToArgumentPack);
 }
 
 ExpectedType ASTNodeImporter::VisitTemplateSpecializationType(
@@ -3230,16 +3229,19 @@ static bool isAncestorDeclContextOf(const DeclContext *DC, const Decl *D) {
   return false;
 }
 
-// Returns true if the statement S has a parent declaration that has a
-// DeclContext that is inside (or equal to) DC. In a specific use case if DC is
-// a FunctionDecl, check if statement S resides in the body of the function.
+// Check if there is a declaration that has 'DC' as parent context and is
+// referenced from statement 'S' or one of its children. The search is done in
+// BFS order through children of 'S'.
 static bool isAncestorDeclContextOf(const DeclContext *DC, const Stmt *S) {
-  ParentMapContext &ParentC = DC->getParentASTContext().getParentMapContext();
-  DynTypedNodeList Parents = ParentC.getParents(*S);
-  while (!Parents.empty()) {
-    if (const Decl *PD = Parents.begin()->get<Decl>())
-      return isAncestorDeclContextOf(DC, PD);
-    Parents = ParentC.getParents(*Parents.begin());
+  SmallVector<const Stmt *> ToProcess;
+  ToProcess.push_back(S);
+  while (!ToProcess.empty()) {
+    const Stmt *CurrentS = ToProcess.pop_back_val();
+    ToProcess.append(CurrentS->child_begin(), CurrentS->child_end());
+    if (const auto *DeclRef = dyn_cast<DeclRefExpr>(CurrentS))
+      if (const Decl *D = DeclRef->getDecl())
+        if (isAncestorDeclContextOf(DC, D))
+          return true;
   }
   return false;
 }
@@ -9439,8 +9441,7 @@ Expected<TemplateName> ASTImporter::Import(TemplateName From) {
       return AssociatedDeclOrErr.takeError();
 
     return ToContext.getSubstTemplateTemplateParmPack(
-        *ArgPackOrErr, *AssociatedDeclOrErr, SubstPack->getIndex(),
-        SubstPack->getFinal());
+        *ArgPackOrErr, *AssociatedDeclOrErr, SubstPack->getIndex());
   }
   case TemplateName::UsingTemplate: {
     auto UsingOrError = Import(From.getAsUsingShadowDecl());
