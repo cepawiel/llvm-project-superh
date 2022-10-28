@@ -609,6 +609,10 @@ ABI Changes in Clang
   such packing. Clang now matches the gcc behavior (except on Darwin and PS4).
   You can switch back to the old ABI behavior with the flag:
   ``-fclang-abi-compat=15.0``.
+- GCC allows POD types to have defaulted special members. Clang historically
+  classified such types as non-POD. Clang now matches the gcc behavior (except
+  on Darwin and PS4). You can switch back to the old ABI behavior with the flag:
+  ``-fclang-abi-compat=15.0``.
 
 OpenMP Support in Clang
 -----------------------
@@ -641,6 +645,13 @@ X86 Support in Clang
   * Support intrinsic of ``_aand_i32/64``
   * Support intrinsic of ``_aor_i32/64``
   * Support intrinsic of ``_axor_i32/64``
+- Support ISA of ``AVX-IFMA``.
+  * Support intrinsic of ``_mm(256)_madd52hi_avx_epu64``.
+  * Support intrinsic of ``_mm(256)_madd52lo_avx_epu64``.
+- Support ISA of ``AVX-VNNI-INT8``.
+  * Support intrinsic of ``_mm(256)_dpbssd(s)_epi32``.
+  * Support intrinsic of ``_mm(256)_dpbsud(s)_epi32``.
+  * Support intrinsic of ``_mm(256)_dpbuud(s)_epi32``.
 
 WebAssembly Support in Clang
 ----------------------------
