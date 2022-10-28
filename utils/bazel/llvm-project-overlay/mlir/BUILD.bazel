@@ -4352,6 +4352,7 @@ cc_library(
     hdrs = ["include/mlir/Dialect/LLVMIR/NVVMDialect.h"],
     includes = ["include"],
     deps = [
+        ":DialectUtils",
         ":IR",
         ":LLVMDialect",
         ":NVVMOpsIncGen",
@@ -6314,9 +6315,11 @@ cc_library(
     hdrs = glob(["include/mlir/Target/LLVMIR/Dialect/NVVM/*.h"]),
     includes = ["include"],
     deps = [
+        ":DialectUtils",
         ":IR",
         ":NVVMConversionIncGen",
         ":NVVMDialect",
+        ":Support",
         ":ToLLVMIRTranslation",
         "//llvm:Core",
         "//llvm:Support",
