@@ -266,13 +266,14 @@ private:
   OperandMatchResultTy tryParseGPROperand(OperandVector &Operands);
   template <bool ParseShiftExtend, bool ParseSuffix>
   OperandMatchResultTy tryParseSVEDataVector(OperandVector &Operands);
+  template <RegKind RK>
   OperandMatchResultTy tryParseSVEPredicateVector(OperandVector &Operands);
-  OperandMatchResultTy tryParseSVEPredicateAsCounter(OperandVector &Operands);
   template <RegKind VectorKind>
   OperandMatchResultTy tryParseVectorList(OperandVector &Operands,
                                           bool ExpectMatch = false);
   OperandMatchResultTy tryParseMatrixTileList(OperandVector &Operands);
   OperandMatchResultTy tryParseSVEPattern(OperandVector &Operands);
+  OperandMatchResultTy tryParseSVEVecLenSpecifier(OperandVector &Operands);
   OperandMatchResultTy tryParseGPR64x8(OperandVector &Operands);
   OperandMatchResultTy tryParseImmRange(OperandVector &Operands);
 
@@ -824,6 +825,18 @@ public:
       return DiagnosticPredicateTy::NoMatch;
     int64_t Val = MCE->getValue();
     if (Val >= 0 && Val < 32)
+      return DiagnosticPredicateTy::Match;
+    return DiagnosticPredicateTy::NearMatch;
+  }
+
+  DiagnosticPredicate isSVEVecLenSpecifier() const {
+    if (!isImm())
+      return DiagnosticPredicateTy::NoMatch;
+    auto *MCE = dyn_cast<MCConstantExpr>(getImm());
+    if (!MCE)
+      return DiagnosticPredicateTy::NoMatch;
+    int64_t Val = MCE->getValue();
+    if (Val >= 0 && Val <= 1)
       return DiagnosticPredicateTy::Match;
     return DiagnosticPredicateTy::NearMatch;
   }
@@ -3858,57 +3871,37 @@ AArch64AsmParser::tryParseVectorRegister(unsigned &Reg, StringRef &Kind,
   return MatchOperand_NoMatch;
 }
 
-OperandMatchResultTy
-AArch64AsmParser::tryParseSVEPredicateAsCounter(OperandVector &Operands) {
-  const SMLoc S = getLoc();
-  StringRef Kind;
-  unsigned RegNum;
-  auto Res =
-      tryParseVectorRegister(RegNum, Kind, RegKind::SVEPredicateAsCounter);
-  if (Res != MatchOperand_Success)
-    return Res;
-
-  const auto &KindRes = parseVectorKind(Kind, RegKind::SVEPredicateAsCounter);
-  if (!KindRes)
-    return MatchOperand_NoMatch;
-
-  unsigned ElementWidth = KindRes->second;
-  Operands.push_back(
-      AArch64Operand::CreateVectorReg(RegNum, RegKind::SVEPredicateAsCounter,
-                                      ElementWidth, S, getLoc(), getContext()));
-
-  // Check if register is followed by an index
-  OperandMatchResultTy ResIndex = tryParseVectorIndex(Operands);
-  if (ResIndex == MatchOperand_ParseFail)
-    return ResIndex;
-
-  return MatchOperand_Success;
-}
 /// tryParseSVEPredicateVector - Parse a SVE predicate register operand.
-OperandMatchResultTy
+template <RegKind RK> OperandMatchResultTy
 AArch64AsmParser::tryParseSVEPredicateVector(OperandVector &Operands) {
   // Check for a SVE predicate register specifier first.
   const SMLoc S = getLoc();
   StringRef Kind;
   unsigned RegNum;
-  auto Res = tryParseVectorRegister(RegNum, Kind, RegKind::SVEPredicateVector);
+  auto Res = tryParseVectorRegister(RegNum, Kind, RK);
   if (Res != MatchOperand_Success)
     return Res;
 
-  const auto &KindRes = parseVectorKind(Kind, RegKind::SVEPredicateVector);
+  const auto &KindRes = parseVectorKind(Kind, RK);
   if (!KindRes)
     return MatchOperand_NoMatch;
 
   unsigned ElementWidth = KindRes->second;
   Operands.push_back(AArch64Operand::CreateVectorReg(
-      RegNum, RegKind::SVEPredicateVector, ElementWidth, S,
+      RegNum, RK, ElementWidth, S,
       getLoc(), getContext()));
 
   if (getLexer().is(AsmToken::LBrac)) {
-    // Indexed predicate, there's no comma so try parse the next operand
-    // immediately.
-    if (parseOperand(Operands, false, false))
-      return MatchOperand_NoMatch;
+    if (RK == RegKind::SVEPredicateAsCounter) {
+      OperandMatchResultTy ResIndex = tryParseVectorIndex(Operands);
+      if (ResIndex == MatchOperand_Success)
+        return MatchOperand_Success;
+    } else {
+      // Indexed predicate, there's no comma so try parse the next operand
+      // immediately.
+      if (parseOperand(Operands, false, false))
+        return MatchOperand_NoMatch;
+    }
   }
 
   // Not all predicates are followed by a '/m' or '/z'.
@@ -3928,7 +3921,12 @@ AArch64AsmParser::tryParseSVEPredicateVector(OperandVector &Operands) {
 
   // Zeroing or merging?
   auto Pred = getTok().getString().lower();
-  if (Pred != "z" && Pred != "m") {
+  if (RK == RegKind::SVEPredicateAsCounter && Pred != "z") {
+    Error(getLoc(), "expecting 'z' predication");
+    return MatchOperand_ParseFail;
+  }
+
+  if (RK == RegKind::SVEPredicateVector && Pred != "z" && Pred != "m") {
     Error(getLoc(), "expecting 'm' or 'z' predication");
     return MatchOperand_ParseFail;
   }
@@ -5672,6 +5670,14 @@ bool AArch64AsmParser::showMatchError(SMLoc Loc, unsigned ErrCode,
   case Match_InvalidSVEPNPredicateAny_p8to15Reg:
     return Error(Loc, "invalid restricted predicate-as-counter register "
                       "expected pn8..pn15");
+  case Match_InvalidSVEPNPredicateBReg:
+  case Match_InvalidSVEPNPredicateHReg:
+  case Match_InvalidSVEPNPredicateSReg:
+  case Match_InvalidSVEPNPredicateDReg:
+    return Error(Loc, "Invalid predicate register, expected PN in range "
+                      "pn0..pn15 with element suffix.");
+  case Match_InvalidSVEVecLenSpecifier:
+    return Error(Loc, "Invalid vector length specifier, expected VLx2 or VLx4");
   case Match_InvalidSVEExactFPImmOperandHalfOne:
     return Error(Loc, "Invalid floating point constant, expected 0.5 or 1.0.");
   case Match_InvalidSVEExactFPImmOperandHalfTwo:
@@ -6241,6 +6247,7 @@ bool AArch64AsmParser::MatchAndEmitInstruction(SMLoc IDLoc, unsigned &Opcode,
   case Match_InvalidZPR_4b64:
   case Match_InvalidSVEPredicateAnyReg:
   case Match_InvalidSVEPattern:
+  case Match_InvalidSVEVecLenSpecifier:
   case Match_InvalidSVEPredicateBReg:
   case Match_InvalidSVEPredicateHReg:
   case Match_InvalidSVEPredicateSReg:
@@ -6251,6 +6258,10 @@ bool AArch64AsmParser::MatchAndEmitInstruction(SMLoc IDLoc, unsigned &Opcode,
   case Match_InvalidSVEPNPredicateS_p8to15Reg:
   case Match_InvalidSVEPNPredicateD_p8to15Reg:
   case Match_InvalidSVEPNPredicateAny_p8to15Reg:
+  case Match_InvalidSVEPNPredicateBReg:
+  case Match_InvalidSVEPNPredicateHReg:
+  case Match_InvalidSVEPNPredicateSReg:
+  case Match_InvalidSVEPNPredicateDReg:
   case Match_InvalidSVEExactFPImmOperandHalfOne:
   case Match_InvalidSVEExactFPImmOperandHalfTwo:
   case Match_InvalidSVEExactFPImmOperandZeroOne:
@@ -7439,6 +7450,28 @@ AArch64AsmParser::tryParseSVEPattern(OperandVector &Operands) {
     Pattern = Pat->Encoding;
     assert(Pattern >= 0 && Pattern < 32);
   }
+
+  Operands.push_back(
+      AArch64Operand::CreateImm(MCConstantExpr::create(Pattern, getContext()),
+                                SS, getLoc(), getContext()));
+
+  return MatchOperand_Success;
+}
+
+OperandMatchResultTy
+AArch64AsmParser::tryParseSVEVecLenSpecifier(OperandVector &Operands) {
+  int64_t Pattern;
+  SMLoc SS = getLoc();
+  const AsmToken &TokE = getTok();
+  // Parse the pattern
+  auto Pat = AArch64SVEVecLenSpecifier::lookupSVEVECLENSPECIFIERByName(
+      TokE.getString());
+  if (!Pat)
+    return MatchOperand_NoMatch;
+
+  Lex();
+  Pattern = Pat->Encoding;
+  assert(Pattern >= 0 && Pattern <= 1 && "Pattern does not exist");
 
   Operands.push_back(
       AArch64Operand::CreateImm(MCConstantExpr::create(Pattern, getContext()),

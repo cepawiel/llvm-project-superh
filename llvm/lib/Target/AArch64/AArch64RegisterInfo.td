@@ -888,7 +888,7 @@ class PPRAsmOperand <string name, string RegClass, int Width>: AsmOperandClass {
                             # Width # ", " # "AArch64::" # RegClass # "RegClassID>";
   let DiagnosticType = "InvalidSVE" # name # "Reg";
   let RenderMethod = "addRegOperands";
-  let ParserMethod = "tryParseSVEPredicateVector";
+  let ParserMethod = "tryParseSVEPredicateVector<RegKind::SVEPredicateVector>";
 }
 
 def PPRAsmOpAny : PPRAsmOperand<"PredicateAny", "PPR",  0>;
@@ -915,8 +915,23 @@ class PNRAsmOperand<string name, string RegClass, int Width>
                             # Width # ", " # "AArch64::"
                             # RegClass # "RegClassID>";
   let DiagnosticType = "InvalidSVE" # name # "Reg";
-  let ParserMethod   = "tryParseSVEPredicateAsCounter";
+  let ParserMethod   = "tryParseSVEPredicateVector<RegKind::SVEPredicateAsCounter>";
 }
+
+class PNRRegOp<string Suffix, AsmOperandClass C, int EltSize, RegisterClass RC>
+    : PPRRegOp<Suffix, C, ElementSizeNone, RC> {
+  let PrintMethod = "printPredicateAsCounter<" # EltSize # ">";
+}
+
+def PNRAsmOp8  : PNRAsmOperand<"PNPredicateB", "PPR", 8>;
+def PNRAsmOp16 : PNRAsmOperand<"PNPredicateH", "PPR", 16>;
+def PNRAsmOp32 : PNRAsmOperand<"PNPredicateS", "PPR", 32>;
+def PNRAsmOp64 : PNRAsmOperand<"PNPredicateD", "PPR", 64>;
+
+def PNR8   : PNRRegOp<"b", PNRAsmOp8,  8,  PPR>;
+def PNR16  : PNRRegOp<"h", PNRAsmOp16, 16, PPR>;
+def PNR32  : PNRRegOp<"s", PNRAsmOp32, 32, PPR>;
+def PNR64  : PNRRegOp<"d", PNRAsmOp64, 64, PPR>;
 
 class PNRP8to15RegOp<string Suffix, AsmOperandClass C, int EltSize, RegisterClass RC>
     : PPRRegOp<Suffix, C, ElementSizeNone, RC> {
