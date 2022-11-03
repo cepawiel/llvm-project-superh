@@ -377,6 +377,9 @@ Improvements to Clang's diagnostics
   `Issue 58673 <https://github.com/llvm/llvm-project/issues/58673>`_.
 - Better diagnostics when the user has missed `auto` in a declaration.
   `Issue 49129 <https://github.com/llvm/llvm-project/issues/49129>`_.
+- Clang now diagnoses use of invalid or reserved module names in a module
+  export declaration. Both are diagnosed as an error, but the diagnostic is
+  suppressed for use of reserved names in a system header.
 
 Non-comprehensive list of changes in this release
 -------------------------------------------------
@@ -574,6 +577,7 @@ C++ Language Changes in Clang
   This means Clang will by default accept code using features from C++17 and
   conforming GNU extensions. Projects incompatible with C++17 can add
   ``-std=gnu++14`` to their build settings to restore the previous behaviour.
+- Implemented DR2358 allowing init captures in lambdas in default arguments.
 
 C++20 Feature Support
 ^^^^^^^^^^^^^^^^^^^^^
