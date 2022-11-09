@@ -3748,3 +3748,21 @@ defm BFMUL_ZZZI : sve2p1_fp_bfmul_by_indexed_elem<"bfmul">;
 
 def BFCLAMP_ZZZ : sve2p1_fclamp<"bfclamp", 0b00, ZPR16>;
 } // End HasSVE2p1_or_HasSME2p1, HasB16B16
+
+
+//===----------------------------------------------------------------------===//
+// SME2.1 or SVE2.1 instructions
+//===----------------------------------------------------------------------===//
+let Predicates = [HasSVE2p1_or_HasSME2p1] in {
+defm FADDQV   : sve2p1_fp_reduction_q<0b000, "faddqv">;
+defm FMAXNMQV : sve2p1_fp_reduction_q<0b100, "fmaxnmqv">;
+defm FMINNMQV : sve2p1_fp_reduction_q<0b101, "fminnmqv">;
+defm FMAXQV   : sve2p1_fp_reduction_q<0b110, "fmaxqv">;
+defm FMINQV   : sve2p1_fp_reduction_q<0b111, "fminqv">;
+
+defm DUPQ_ZZI : sve2p1_dupq<"dupq">;
+def EXTQ_ZZI : sve2p1_extq<"extq">;
+
+defm PMOV_PZI : sve2p1_vector_to_pred<"pmov">;
+defm PMOV_ZIP : sve2p1_pred_to_vector<"pmov">;
+} // End HasSVE2p1_or_HasSME2p1

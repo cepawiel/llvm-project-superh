@@ -9283,3 +9283,162 @@ multiclass sve_mem_128b_cld_ss<bits<2> dtype, string mnemonic, RegisterOperand g
   def : InstAlias<mnemonic # " $Zt, $Pg/z, [$Rn, $Rm]",
                  (!cast<Instruction>(NAME) ZPR128:$Zt, PPR3bAny:$Pg, GPR64sp:$Rn, gprsh_ty:$Rm), 0>;
 }
+
+
+// SVE floating-point recursive reduction (quadwords)
+class sve2p1_fp_reduction_q<bits<2> sz, bits<3> opc, string mnemonic,
+                            RegisterOperand zpr_ty, string vec_sfx>
+    : I<(outs V128:$Vd), (ins PPR3bAny:$Pg, zpr_ty:$Zn),
+        mnemonic, "\t$Vd." # vec_sfx # ", $Pg, $Zn",
+        "", []>, Sched<[]> {
+  bits<5> Vd;
+  bits<5> Zn;
+  bits<3> Pg;
+  let Inst{31-24} = 0b01100100;
+  let Inst{23-22} = sz;
+  let Inst{21-19} = 0b010;
+  let Inst{18-16} = opc;
+  let Inst{15-13} = 0b101;
+  let Inst{12-10} = Pg;
+  let Inst{9-5}   = Zn;
+  let Inst{4-0}   = Vd;
+}
+
+multiclass sve2p1_fp_reduction_q<bits<3> opc, string mnemonic> {
+  def _H : sve2p1_fp_reduction_q<0b01, opc, mnemonic, ZPR16, "8h">;
+  def _S : sve2p1_fp_reduction_q<0b10, opc, mnemonic, ZPR32, "4s">;
+  def _D : sve2p1_fp_reduction_q<0b11, opc, mnemonic, ZPR64, "2d">;
+}
+
+
+// SVE Permute Vector - Quadwords (DUPQ)
+class sve2p1_dupq<bits<5> ind_tsz, string mnemonic, ZPRRegOp zprty, Operand itype>
+    : I<(outs zprty:$Zd), (ins zprty:$Zn, itype:$index),
+        mnemonic, "\t$Zd, $Zn$index",
+        "", []>, Sched<[]> {
+  bits<5> Zd;
+  bits<5> Zn;
+  let Inst{31-21} = 0b00000101001;
+  let Inst{20-16} = ind_tsz;
+  let Inst{15-10} = 0b001001;
+  let Inst{9-5} = Zn;
+  let Inst{4-0} = Zd;
+}
+
+multiclass sve2p1_dupq<string mnemonic> {
+  def _B : sve2p1_dupq<{?, ?, ?, ?, 1}, mnemonic, ZPR8, VectorIndexB32b> {
+    bits<4> index;
+    let Inst{20-17} = index;
+  }
+  def _H : sve2p1_dupq<{?, ?, ?, 1, 0}, mnemonic, ZPR16, VectorIndexH32b> {
+    bits<3> index;
+    let Inst{20-18} = index;
+  }
+  def _S : sve2p1_dupq<{?, ?, 1, 0, 0}, mnemonic, ZPR32, VectorIndexS32b> {
+    bits<2> index;
+    let Inst{20-19} = index;
+  }
+  def _D : sve2p1_dupq<{?, 1, 0, 0, 0}, mnemonic, ZPR64, VectorIndexD32b> {
+    bits<1> index;
+    let Inst{20} = index;
+  }
+}
+
+
+// SVE Permute Vector - Quadwords (EXTQ)
+class sve2p1_extq<string mnemonic>
+    : I<(outs ZPR8:$Zdn), (ins ZPR8:$_Zdn, ZPR8:$Zm, imm0_15:$imm4),
+        mnemonic, "\t$Zdn, $_Zdn, $Zm, $imm4",
+        "", []>, Sched<[]> {
+  bits<5> Zdn;
+  bits<5> Zm;
+  bits<4> imm4;
+  let Inst{31-20} = 0b000001010110;
+  let Inst{19-16} = imm4;
+  let Inst{15-10} = 0b001001;
+  let Inst{9-5} = Zm;
+  let Inst{4-0} = Zdn;
+
+  let Constraints = "$Zdn = $_Zdn";
+  let DestructiveInstType = DestructiveOther;
+  let ElementSize = ZPR8.ElementSize;
+}
+
+
+// SVE move predicate from vector
+class sve2p1_vector_to_pred<bits<4> opc, string mnemonic,
+                            PPRRegOp ppr_ty, Operand itype>
+    : I<(outs ppr_ty:$Pd), (ins ZPRAny:$Zn, itype:$index),
+        mnemonic, "\t$Pd, $Zn$index",
+        "", []>, Sched<[]> {
+  bits<4> Pd;
+  bits<5> Zn;
+  let Inst{31-24} = 0b00000101;
+  let Inst{23-22} = opc{3-2};
+  let Inst{21-19} = 0b101;
+  let Inst{18-17} = opc{1-0};
+  let Inst{16-10} = 0b0001110;
+  let Inst{9-5}   = Zn;
+  let Inst{4}     = 0b0;
+  let Inst{3-0}   = Pd;
+}
+
+multiclass sve2p1_vector_to_pred<string mnemonic> {
+  def _B : sve2p1_vector_to_pred<{0, 0, 0, 1}, mnemonic, PPR8,  VectorIndex0>;
+  def _H : sve2p1_vector_to_pred<{0, 0, 1, ?}, mnemonic, PPR16, VectorIndexD32b> {
+    bits<1> index;
+    let Inst{17} = index;
+  }
+  def _S : sve2p1_vector_to_pred<{0, 1, ?, ?}, mnemonic, PPR32, VectorIndexS32b> {
+    bits<2> index;
+    let Inst{18-17} = index;
+  }
+  def _D : sve2p1_vector_to_pred<{1, ?, ?, ?}, mnemonic, PPR64, VectorIndexH32b> {
+    bits<3> index;
+    let Inst{22}    = index{2};
+    let Inst{18-17} = index{1-0};
+  }
+
+  def : InstAlias<mnemonic # "\t$Pd, $Zn",
+                 (!cast<Instruction>(NAME # _B) PPR8:$Pd, ZPRAny:$Zn, 0), 1>;
+}
+
+
+// SVE move predicate into vector
+class sve2p1_pred_to_vector<bits<4> opc, string mnemonic,
+                            PPRRegOp ppr_ty, Operand itype>
+    : I<(outs ZPRAny:$Zd), (ins ZPRAny:$_Zd, itype:$index, ppr_ty:$Pn),
+        mnemonic, "\t$Zd$index, $Pn",
+        "", []>, Sched<[]> {
+  bits<5> Zd;
+  bits<4> Pn;
+  let Inst{31-24} = 0b00000101;
+  let Inst{23-22} = opc{3-2};
+  let Inst{21-19} = 0b101;
+  let Inst{18-17} = opc{1-0};
+  let Inst{16-9}  = 0b10011100;
+  let Inst{8-5}   = Pn;
+  let Inst{4-0}   = Zd;
+
+  let Constraints = "$Zd = $_Zd";
+}
+
+multiclass sve2p1_pred_to_vector<string mnemonic> {
+  def _B : sve2p1_pred_to_vector<{0, 0, 0, 1}, mnemonic, PPR8,  VectorIndex0>;
+  def _H : sve2p1_pred_to_vector<{0, 0, 1, ?}, mnemonic, PPR16, VectorIndexD32b> {
+    bits<1> index;
+    let Inst{17} = index;
+  }
+  def _S : sve2p1_pred_to_vector<{0, 1, ?, ?}, mnemonic, PPR32, VectorIndexS32b> {
+    bits<2> index;
+    let Inst{18-17} = index;
+  }
+  def _D : sve2p1_pred_to_vector<{1, ?, ?, ?}, mnemonic, PPR64, VectorIndexH32b> {
+    bits<3> index;
+    let Inst{22}    = index{2};
+    let Inst{18-17} = index{1-0};
+  }
+
+  def : InstAlias<mnemonic # "\t$Zd, $Pn",
+                 (!cast<Instruction>(NAME # _B) ZPRAny:$Zd, 0, PPR8:$Pn), 1>;
+}
