@@ -2719,7 +2719,7 @@ def fplugin_arg : Joined<["-"], "fplugin-arg-">,
   MetaVarName<"<name>-<arg>">,
   HelpText<"Pass <arg> to plugin <name>">;
 def fpass_plugin_EQ : Joined<["-"], "fpass-plugin=">,
-  Group<f_Group>, Flags<[CC1Option]>, MetaVarName<"<dsopath>">,
+  Group<f_Group>, Flags<[CC1Option,FlangOption,FC1Option]>, MetaVarName<"<dsopath>">,
   HelpText<"Load pass plugin from a dynamic shared object file (only with new pass manager).">,
   MarshallingInfoStringVector<CodeGenOpts<"PassPlugins">>;
 defm preserve_as_comments : BoolFOption<"preserve-as-comments",
@@ -3910,8 +3910,8 @@ def mdsp : Flag<["-"], "mdsp">, Group<m_mips_Features_Group>;
 def mno_dsp : Flag<["-"], "mno-dsp">, Group<m_mips_Features_Group>;
 def mdspr2 : Flag<["-"], "mdspr2">, Group<m_mips_Features_Group>;
 def mno_dspr2 : Flag<["-"], "mno-dspr2">, Group<m_mips_Features_Group>;
-def msingle_float : Flag<["-"], "msingle-float">, Group<m_mips_Features_Group>;
-def mdouble_float : Flag<["-"], "mdouble-float">, Group<m_mips_Features_Group>;
+def msingle_float : Flag<["-"], "msingle-float">, Group<m_Group>;
+def mdouble_float : Flag<["-"], "mdouble-float">, Group<m_Group>;
 def mmadd4 : Flag<["-"], "mmadd4">, Group<m_mips_Features_Group>,
   HelpText<"Enable the generation of 4-operand madd.s, madd.d and related instructions.">;
 def mno_madd4 : Flag<["-"], "mno-madd4">, Group<m_mips_Features_Group>,

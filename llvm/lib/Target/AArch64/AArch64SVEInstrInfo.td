@@ -3554,7 +3554,7 @@ let Predicates = [HasSVE2] in {
 let Predicates = [HasSVE2orSME] in {
   // SVE2 table lookup (three sources)
   defm TBL_ZZZZ : sve2_int_perm_tbl<"tbl", int_aarch64_sve_tbl2>;
-  defm TBX_ZZZ  : sve2_int_perm_tbx<"tbx", int_aarch64_sve_tbx>;
+  defm TBX_ZZZ  : sve2_int_perm_tbx<"tbx", 0b01, int_aarch64_sve_tbx>;
 
   // SVE2 integer compare scalar count and limit
   defm WHILEGE_PWW : sve_int_while4_rr<0b000, "whilege", int_aarch64_sve_whilege>;
@@ -3793,4 +3793,11 @@ defm SMAXQV_VPZ : sve2p1_int_reduce_q<0b0100, "smaxqv">;
 defm UMAXQV_VPZ : sve2p1_int_reduce_q<0b0101, "umaxqv">;
 defm SMINQV_VPZ : sve2p1_int_reduce_q<0b0110, "sminqv">;
 defm UMINQV_VPZ : sve2p1_int_reduce_q<0b0111, "uminqv">;
+
+defm TBXQ_ZZZ : sve2_int_perm_tbx<"tbxq", 0b10, null_frag>;
+defm ZIPQ1_ZZZ : sve2p1_permute_vec_elems_q<0b000, "zipq1">;
+defm ZIPQ2_ZZZ : sve2p1_permute_vec_elems_q<0b001, "zipq2">;
+defm UZPQ1_ZZZ : sve2p1_permute_vec_elems_q<0b010, "uzpq1">;
+defm UZPQ2_ZZZ : sve2p1_permute_vec_elems_q<0b011, "uzpq2">;
+defm TBLQ_ZZZ  : sve2p1_tblq<"tblq">;
 } // End HasSVE2p1_or_HasSME2p1

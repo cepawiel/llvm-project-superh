@@ -70,10 +70,6 @@ def FeatureLSE : SubtargetFeature<"lse", "HasLSE", "true",
 def FeatureLSE2 : SubtargetFeature<"lse2", "HasLSE2", "true",
   "Enable ARMv8.4 Large System Extension 2 (LSE2) atomicity rules (FEAT_LSE2)">;
 
-def FeatureLDAPR : SubtargetFeature<"ldapr", "HasLDAPR", "true",
-  "Use LDAPR to lower atomic loads; experimental until we "
-  "have more testing/a formal correctness proof">;
-
 def FeatureOutlineAtomics : SubtargetFeature<"outline-atomics", "OutlineAtomics", "true",
   "Enable out of line atomics to support LSE instructions">;
 
@@ -502,6 +498,9 @@ def FeatureNoBTIAtReturnTwice : SubtargetFeature<"no-bti-at-return-twice",
                                                  "Don't place a BTI instruction "
                                                  "after a return-twice">;
 
+def FeatureMEC : SubtargetFeature<"mec", "HasMEC",
+    "true", "Enable Memory Encryption Contexts Extension", [FeatureRME]>;
+
 //===----------------------------------------------------------------------===//
 // Architectures.
 //
@@ -547,7 +546,7 @@ def HasV8_8aOps : SubtargetFeature<
 
 def HasV9_0aOps : SubtargetFeature<
   "v9a", "HasV9_0aOps", "true", "Support ARM v9a instructions",
-  [HasV8_5aOps, FeatureSVE2]>;
+  [HasV8_5aOps, FeatureMEC, FeatureSVE2]>;
 
 def HasV9_1aOps : SubtargetFeature<
   "v9.1a", "HasV9_1aOps", "true", "Support ARM v9.1a instructions",
