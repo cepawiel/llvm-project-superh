@@ -2131,11 +2131,12 @@ PrintingPolicy TypeSystemClang::GetTypePrintingPolicy() {
   return printing_policy;
 }
 
-std::string TypeSystemClang::GetTypeNameForDecl(const NamedDecl *named_decl) {
+std::string TypeSystemClang::GetTypeNameForDecl(const NamedDecl *named_decl,
+                                                bool qualified) {
   clang::PrintingPolicy printing_policy = GetTypePrintingPolicy();
   std::string result;
   llvm::raw_string_ostream os(result);
-  named_decl->printQualifiedName(os, printing_policy);
+  named_decl->getNameForDiagnostic(os, printing_policy, qualified);
   return result;
 }
 
@@ -3768,7 +3769,7 @@ bool TypeSystemClang::GetCompleteType(lldb::opaque_compiler_type_t type) {
 }
 
 ConstString TypeSystemClang::GetTypeName(lldb::opaque_compiler_type_t type,
-                                         bool BaseOnly) {
+                                         bool base_only) {
   if (!type)
     return ConstString();
 
@@ -3790,9 +3791,13 @@ ConstString TypeSystemClang::GetTypeName(lldb::opaque_compiler_type_t type,
     return ConstString(GetTypeNameForDecl(typedef_decl));
   }
 
-  clang::PrintingPolicy printing_policy(GetTypePrintingPolicy());
-  printing_policy.SuppressScope = BaseOnly;
-  return ConstString(qual_type.getAsString(printing_policy));
+  // For consistency, this follows the same code path that clang uses to emit
+  // debug info. This also handles when we don't want any scopes preceding the
+  // name.
+  if (auto *named_decl = qual_type->getAsTagDecl())
+    return ConstString(GetTypeNameForDecl(named_decl, !base_only));
+
+  return ConstString(qual_type.getAsString(GetTypePrintingPolicy()));
 }
 
 ConstString
@@ -9805,6 +9810,29 @@ TypeSystemClang::DeclContextGetTypeSystemClang(const CompilerDeclContext &dc) {
   if (ast)
     return &ast->getASTContext();
   return nullptr;
+}
+
+void TypeSystemClang::RequireCompleteType(CompilerType type) {
+  // Technically, enums can be incomplete too, but we don't handle those as they
+  // are emitted even under -flimit-debug-info.
+  if (!TypeSystemClang::IsCXXClassType(type))
+    return;
+
+  if (type.GetCompleteType())
+    return;
+
+  // No complete definition in this module.  Mark the class as complete to
+  // satisfy local ast invariants, but make a note of the fact that
+  // it is not _really_ complete so we can later search for a definition in a
+  // different module.
+  // Since we provide layout assistance, layouts of types containing this class
+  // will be correct even if we  are not able to find the definition elsewhere.
+  bool started = TypeSystemClang::StartTagDeclarationDefinition(type);
+  lldbassert(started && "Unable to start a class type definition.");
+  TypeSystemClang::CompleteTagDeclarationDefinition(type);
+  const clang::TagDecl *td = ClangUtil::GetAsTagDecl(type);
+  auto &ts = llvm::cast<TypeSystemClang>(*type.GetTypeSystem());
+  ts.GetMetadata(td)->SetIsForcefullyCompleted();
 }
 
 namespace {

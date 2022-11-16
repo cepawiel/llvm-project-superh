@@ -174,8 +174,6 @@ void PassManagerBuilder::addFunctionSimplificationPasses(
       createCFGSimplificationPass(SimplifyCFGOptions().convertSwitchRangeToICmp(
           true))); // Merge & remove BBs
   // Combine silly seq's
-  if (OptLevel > 2)
-    MPM.add(createAggressiveInstCombinerPass());
   MPM.add(createInstructionCombiningPass());
   if (SizeLevel == 0)
     MPM.add(createLibCallsShrinkWrapPass());
@@ -234,8 +232,7 @@ void PassManagerBuilder::addFunctionSimplificationPasses(
 
   if (OptLevel > 1) {
     MPM.add(createMergedLoadStoreMotionPass()); // Merge ld/st in diamonds
-    MPM.add(NewGVN ? createNewGVNPass()
-                   : createGVNPass(DisableGVNLoadPRE)); // Remove redundancies
+    MPM.add(createGVNPass(DisableGVNLoadPRE));  // Remove redundancies
   }
   MPM.add(createSCCPPass());                  // Constant prop with SCCP
 
