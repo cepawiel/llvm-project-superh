@@ -5,22 +5,8 @@
 
 @global = external global double, align 8
 
-;
-; Linkage on functions.
-;
-
-; CHECK: llvm.func internal @func_internal
-define internal void @func_internal() {
-  ret void
-}
-
 ; CHECK: llvm.func @fe(i32) -> f32
 declare float @fe(i32)
-
-; CHECK: llvm.func internal spir_funccc @spir_func_internal()
-define internal spir_func void @spir_func_internal() {
-  ret void
-}
 
 ; FIXME: function attributes.
 ; CHECK-LABEL: llvm.func internal @f1(%arg0: i64) -> i32 attributes {dso_local} {
@@ -68,14 +54,6 @@ if.end:
 }
 ; CHECK-DBG: } loc(#[[UNKNOWNLOC]])
 
-
-; CHECK-LABEL: llvm.func @f6(%arg0: !llvm.ptr<func<void (i16)>>)
-define void @f6(void (i16) *%fn) {
-; CHECK: %[[c:[0-9]+]] = llvm.mlir.constant(0 : i16) : i16
-; CHECK: llvm.call %arg0(%[[c]])
-  call void %fn(i16 0)
-  ret void
-}
 
 @_ZTIi = external dso_local constant i8*
 @_ZTIii= external dso_local constant i8**
