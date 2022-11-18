@@ -475,7 +475,6 @@ void Parser::ParseOpenMPReductionInitializerForDecl(VarDecl *OmpPrivParm) {
     T.consumeOpen();
 
     ExprVector Exprs;
-    CommaLocsTy CommaLocs;
 
     SourceLocation LParLoc = T.getOpenLocation();
     auto RunSignatureHelp = [this, OmpPrivParm, LParLoc, &Exprs]() {
@@ -485,7 +484,7 @@ void Parser::ParseOpenMPReductionInitializerForDecl(VarDecl *OmpPrivParm) {
       CalledSignatureHelp = true;
       return PreferredType;
     };
-    if (ParseExpressionList(Exprs, CommaLocs, [&] {
+    if (ParseExpressionList(Exprs, [&] {
           PreferredType.enterFunctionArgument(Tok.getLocation(),
                                               RunSignatureHelp);
         })) {
@@ -498,9 +497,6 @@ void Parser::ParseOpenMPReductionInitializerForDecl(VarDecl *OmpPrivParm) {
       SourceLocation RLoc = Tok.getLocation();
       if (!T.consumeClose())
         RLoc = T.getCloseLocation();
-
-      assert(!Exprs.empty() && Exprs.size() - 1 == CommaLocs.size() &&
-             "Unexpected number of commas!");
 
       ExprResult Initializer =
           Actions.ActOnParenListExpr(T.getOpenLocation(), RLoc, Exprs);
@@ -3230,6 +3226,8 @@ OMPClause *Parser::ParseOpenMPClause(OpenMPDirectiveKind DKind,
     if ((CKind == OMPC_ordered || CKind == OMPC_partial) &&
         PP.LookAhead(/*N=*/0).isNot(tok::l_paren))
       Clause = ParseOpenMPClause(CKind, WrongDirective);
+    else if (CKind == OMPC_grainsize)
+      Clause = ParseOpenMPSingleExprWithArgClause(DKind, CKind, WrongDirective);
     else
       Clause = ParseOpenMPSingleExprClause(CKind, WrongDirective);
     break;
@@ -3875,6 +3873,33 @@ OMPClause *Parser::ParseOpenMPSingleExprWithArgClause(OpenMPDirectiveKind DKind,
       Arg.push_back(OMPC_DEVICE_unknown);
       KLoc.emplace_back();
     }
+  } else if (Kind == OMPC_grainsize) {
+    // Parse optional <grainsize modifier> ':'
+    OpenMPGrainsizeClauseModifier Modifier =
+        static_cast<OpenMPGrainsizeClauseModifier>(getOpenMPSimpleClauseType(
+            Kind, Tok.isAnnotation() ? "" : PP.getSpelling(Tok),
+            getLangOpts()));
+    if (getLangOpts().OpenMP >= 51) {
+      if (NextToken().is(tok::colon)) {
+        Arg.push_back(Modifier);
+        KLoc.push_back(Tok.getLocation());
+        // Parse modifier
+        ConsumeAnyToken();
+        // Parse ':'
+        ConsumeAnyToken();
+      } else {
+        if (Modifier == OMPC_GRAINSIZE_strict) {
+          Diag(Tok, diag::err_modifier_expected_colon) << "strict";
+          // Parse modifier
+          ConsumeAnyToken();
+        }
+        Arg.push_back(OMPC_GRAINSIZE_unknown);
+        KLoc.emplace_back();
+      }
+    } else {
+      Arg.push_back(OMPC_GRAINSIZE_unknown);
+      KLoc.emplace_back();
+    }
   } else {
     assert(Kind == OMPC_if);
     KLoc.push_back(Tok.getLocation());
@@ -3897,7 +3922,8 @@ OMPClause *Parser::ParseOpenMPSingleExprWithArgClause(OpenMPDirectiveKind DKind,
 
   bool NeedAnExpression = (Kind == OMPC_schedule && DelimLoc.isValid()) ||
                           (Kind == OMPC_dist_schedule && DelimLoc.isValid()) ||
-                          Kind == OMPC_if || Kind == OMPC_device;
+                          Kind == OMPC_if || Kind == OMPC_device ||
+                          Kind == OMPC_grainsize;
   if (NeedAnExpression) {
     SourceLocation ELoc = Tok.getLocation();
     ExprResult LHS(ParseCastExpression(AnyCastExpr, false, NotTypeCast));
