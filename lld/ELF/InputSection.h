@@ -50,8 +50,6 @@ public:
 
   Kind kind() const { return (Kind)sectionKind; }
 
-  StringRef name;
-
   uint8_t sectionKind : 3;
 
   // The next two bit fields are only used by InputSectionBase, but we
@@ -62,17 +60,19 @@ public:
   // Set for sections that should not be folded by ICF.
   uint8_t keepUnique : 1;
 
+  uint8_t partition = 1;
+  uint32_t type;
+  StringRef name;
+
   // The 1-indexed partition that this section is assigned to by the garbage
   // collector, or 0 if this section is dead. Normally there is only one
   // partition, so this will either be 0 or 1.
-  uint8_t partition = 1;
   elf::Partition &getPartition() const;
 
   // These corresponds to the fields in Elf_Shdr.
-  uint32_t alignment;
   uint64_t flags;
+  uint32_t alignment;
   uint32_t entsize;
-  uint32_t type;
   uint32_t link;
   uint32_t info;
 
@@ -95,8 +95,8 @@ protected:
   constexpr SectionBase(Kind sectionKind, StringRef name, uint64_t flags,
                         uint32_t entsize, uint32_t alignment, uint32_t type,
                         uint32_t info, uint32_t link)
-      : name(name), sectionKind(sectionKind), bss(false), keepUnique(false),
-        alignment(alignment), flags(flags), entsize(entsize), type(type),
+      : sectionKind(sectionKind), bss(false), keepUnique(false), type(type),
+        name(name), flags(flags), alignment(alignment), entsize(entsize),
         link(link), info(info) {}
 };
 
@@ -139,6 +139,8 @@ public:
   // be reset to zero after uses.
   uint16_t bytesDropped = 0;
 
+  mutable bool compressed = false;
+
   // Whether the section needs to be padded with a NOP filler due to
   // deleteFallThruJmpInsn.
   bool nopFiller = false;
@@ -163,7 +165,7 @@ public:
   }
 
   ArrayRef<uint8_t> data() const {
-    if (uncompressedSize >= 0)
+    if (compressed)
       decompress();
     return rawData;
   }
@@ -240,7 +242,7 @@ protected:
   // or -1 if rawData is not compressed (either because the section wasn't
   // compressed in the first place, or because we ended up uncompressing it).
   // Since the feature is not used often, this is usually -1.
-  mutable int64_t uncompressedSize = -1;
+  mutable int64_t size = -1;
 };
 
 // SectionPiece represents a piece of splittable section contents.
