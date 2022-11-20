@@ -706,18 +706,7 @@ def Zn2WriteALULat2Ld : SchedWriteRes<[Zn2AGU, Zn2ALU]> {
   let Latency = 6;
 }
 
-// BT.
-// m,i.
-def : InstRW<[WriteShiftLd], (instregex "BT(16|32|64)mi8")>;
-
 // BTR BTS BTC.
-// r,r,i.
-def Zn2WriteBTRSC : SchedWriteRes<[Zn2ALU]> {
-  let Latency = 2;
-  let NumMicroOps = 2;
-}
-def : InstRW<[Zn2WriteBTRSC], (instregex "BT(R|S|C)(16|32|64)r(r|i8)")>;
-
 // m,r,i.
 def Zn2WriteBTRSCm : SchedWriteRes<[Zn2AGU, Zn2ALU]> {
   let Latency = 6;
@@ -787,25 +776,6 @@ def : InstRW<[WriteMicrocoded], (instregex "RDRAND(16|32|64)r")>;
 
 // XGETBV.
 def : InstRW<[WriteMicrocoded], (instregex "XGETBV")>;
-
-//-- String instructions --//
-// CMPS.
-def : InstRW<[WriteMicrocoded], (instregex "CMPS(B|L|Q|W)")>;
-
-// LODSB/W.
-def : InstRW<[WriteMicrocoded], (instregex "LODS(B|W)")>;
-
-// LODSD/Q.
-def : InstRW<[WriteMicrocoded], (instregex "LODS(L|Q)")>;
-
-// MOVS.
-def : InstRW<[WriteMicrocoded], (instregex "MOVS(B|L|Q|W)")>;
-
-// SCAS.
-def : InstRW<[WriteMicrocoded], (instregex "SCAS(B|W|L|Q)")>;
-
-// STOS
-def : InstRW<[WriteMicrocoded], (instregex "STOS(B|L|Q|W)")>;
 
 // XADD.
 def Zn2XADD : SchedWriteRes<[Zn2ALU]>;
@@ -1115,6 +1085,7 @@ def : InstRW<[Zn2WriteBROADCAST], (instrs VBROADCASTF128)>;
 // r32,x,i.
 def Zn2WriteEXTRACTPSr : SchedWriteRes<[Zn2FPU12, Zn2FPU2]> {
   let Latency = 2;
+  let NumMicroOps = 2; 
   let ResourceCycles = [1, 2];
 }
 def : InstRW<[Zn2WriteEXTRACTPSr], (instregex "(V?)EXTRACTPSrr")>;
