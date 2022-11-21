@@ -1352,9 +1352,8 @@ private:
       next();
       next(); // Consume first token (so we fix leading whitespace).
       while (CurrentToken) {
-        if (IsMarkOrRegion || CurrentToken->Previous->is(TT_BinaryOperator)) {
+        if (IsMarkOrRegion || CurrentToken->Previous->is(TT_BinaryOperator))
           CurrentToken->setType(TT_ImplicitStringLiteral);
-        }
         next();
       }
     }
@@ -2584,7 +2583,7 @@ public:
           (Start->Previous &&
            Start->Previous->isOneOf(TT_RequiresClause,
                                     TT_RequiresClauseInARequiresExpression))
-              ? [this](){
+              ? [this]() {
                   auto Ret = Current ? Current : Line.Last;
                   while (!Ret->ClosesRequiresClause && Ret->Previous)
                     Ret = Ret->Previous;
