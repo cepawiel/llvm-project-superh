@@ -6,10 +6,12 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Arith/Utils/Utils.h"
 #include "mlir/Dialect/Complex/IR/Complex.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
+#include "mlir/Dialect/Utils/IndexingUtils.h"
 #include "mlir/Dialect/Utils/ReshapeOpsUtils.h"
 #include "mlir/Dialect/Utils/StaticValueUtils.h"
 #include "mlir/IR/BlockAndValueMapping.h"
@@ -378,9 +380,7 @@ void DimOp::build(OpBuilder &builder, OperationState &result, Value source,
 }
 
 Optional<int64_t> DimOp::getConstantIndex() {
-  if (auto constantOp = getIndex().getDefiningOp<arith::ConstantOp>())
-    return constantOp.getValue().cast<IntegerAttr>().getInt();
-  return {};
+  return getConstantIntValue(getIndex());
 }
 
 Speculation::Speculatability DimOp::getSpeculatability() {
@@ -1301,6 +1301,15 @@ void ExpandShapeOp::getAsmResultNames(
   setNameFn(getResult(), "expanded");
 }
 
+int64_t ExpandShapeOp::getCorrespondingSourceDim(int64_t resultDim) {
+  assert(resultDim >= 0 && resultDim < getResultType().getRank() &&
+         "invalid resultDim");
+  for (const auto &it : llvm::enumerate(getReassociationIndices()))
+    if (llvm::find(it.value(), resultDim) != it.value().end())
+      return it.index();
+  llvm_unreachable("could not find reassociation group");
+}
+
 SmallVector<AffineMap, 4> CollapseShapeOp::getReassociationMaps() {
   return getSymbolLessAffineMaps(getReassociationExprs());
 }
@@ -1469,6 +1478,87 @@ struct FoldCollapseOfCastOp : public OpRewritePattern<CollapseShapeOp> {
   }
 };
 
+struct FoldDimOfExpandShape : public OpRewritePattern<DimOp> {
+  using OpRewritePattern<DimOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(DimOp dimOp,
+                                PatternRewriter &rewriter) const override {
+    auto expandShapeOp = dimOp.getSource().getDefiningOp<ExpandShapeOp>();
+    if (!expandShapeOp)
+      return failure();
+
+    // Only constant dimension values are supported.
+    Optional<int64_t> dim = dimOp.getConstantIndex();
+    if (!dim.has_value())
+      return failure();
+
+    // Skip static dims. These are folded to constant ops.
+    TensorType resultType = expandShapeOp.getResultType();
+    if (!resultType.isDynamicDim(*dim))
+      return failure();
+
+    // Find reassociation group that contains this result dimension.
+    int64_t srcDim = expandShapeOp.getCorrespondingSourceDim(*dim);
+
+    // `dim` is the only dynamic dimension in `group`. (Otherwise, the
+    // ExpandShapeOp would be ambiguous.)
+    int64_t product = 1;
+    ReassociationIndices grp = expandShapeOp.getReassociationIndices()[srcDim];
+    for (int64_t d : grp) {
+      if (d != dim) {
+        assert(!resultType.isDynamicDim(d) && "expected static dim");
+        product *= resultType.getDimSize(d);
+      }
+    }
+
+    // result dim size = src dim size / (product(other dims in reassoc group))
+    Value srcDimSz =
+        rewriter.create<DimOp>(dimOp.getLoc(), expandShapeOp.getSrc(), srcDim);
+    AffineExpr expr;
+    bindSymbols(dimOp.getContext(), expr);
+    rewriter.replaceOpWithNewOp<AffineApplyOp>(dimOp, expr.floorDiv(product),
+                                               srcDimSz);
+    return success();
+  }
+};
+
+struct FoldDimOfCollapseShape : public OpRewritePattern<DimOp> {
+  using OpRewritePattern<DimOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(DimOp dimOp,
+                                PatternRewriter &rewriter) const override {
+    auto collapseShapeOp = dimOp.getSource().getDefiningOp<CollapseShapeOp>();
+    if (!collapseShapeOp)
+      return failure();
+
+    // Only constant dimension values are supported.
+    Optional<int64_t> dim = dimOp.getConstantIndex();
+    if (!dim.has_value())
+      return failure();
+
+    // Skip static dims. These are folded to constant ops.
+    TensorType resultType = collapseShapeOp.getResultType();
+    if (!resultType.isDynamicDim(*dim))
+      return failure();
+
+    // Get reassociation group of the result dimension.
+    ReassociationIndices group =
+        collapseShapeOp.getReassociationIndices()[*dim];
+
+    // result dim size = product(dims in reassoc group)
+    SmallVector<Value> srcDimSizes;
+    SmallVector<AffineExpr> syms;
+    AffineExpr product;
+    for (const auto &it : llvm::enumerate(group)) {
+      srcDimSizes.push_back(rewriter.create<DimOp>(
+          dimOp.getLoc(), collapseShapeOp.getSrc(), it.value()));
+      syms.push_back(rewriter.getAffineSymbolExpr(it.index()));
+      product = product ? product * syms.back() : syms.back();
+    }
+    rewriter.replaceOpWithNewOp<AffineApplyOp>(dimOp, product, srcDimSizes);
+    return success();
+  }
+};
 } // namespace
 
 void ExpandShapeOp::getCanonicalizationPatterns(RewritePatternSet &results,
@@ -1476,7 +1566,8 @@ void ExpandShapeOp::getCanonicalizationPatterns(RewritePatternSet &results,
   results.add<ComposeReassociativeReshapeOps<ExpandShapeOp>,
               ComposeExpandOfCollapseOp<ExpandShapeOp, CollapseShapeOp>,
               FoldReshapeWithConstant<ExpandShapeOp>,
-              FoldReshapeWithFromElements<ExpandShapeOp>>(context);
+              FoldReshapeWithFromElements<ExpandShapeOp>, FoldDimOfExpandShape,
+              FoldDimOfCollapseShape>(context);
 }
 
 void CollapseShapeOp::getCanonicalizationPatterns(RewritePatternSet &results,
@@ -3200,19 +3291,6 @@ LogicalResult PackOp::verify() {
   return success();
 }
 
-/// Returns a vector that interchanges `elements` starting at offset `offset`
-/// based on the indexes in `interchangeVector`.
-template <typename T>
-SmallVector<T> interchange(ArrayRef<T> elements,
-                           ArrayRef<int64_t> interchangeVector,
-                           int offset = 0) {
-  SmallVector<T> vec = llvm::to_vector(elements);
-  for (auto en : llvm::enumerate(interchangeVector))
-    vec[en.index() + offset] = elements[en.value() + offset];
-
-  return vec;
-}
-
 /// Get the expected packed type based on source type, tile factors, position of
 /// the inner tiles and permutation of the outer tiled loop.
 ShapedType PackOp::inferPackedType(ShapedType sourceType,
@@ -3231,7 +3309,8 @@ ShapedType PackOp::inferPackedType(ShapedType sourceType,
                                             innerTileSizes[tiledDim.index()]);
   }
 
-  resultShape = interchange<int64_t>(resultShape, outerDimsPerm);
+  if (!outerDimsPerm.empty())
+    applyPermutationToVector(resultShape, outerDimsPerm);
 
   // Append the inner tile dimensions.
   resultShape.append(innerTileSizes.begin(), innerTileSizes.end());
