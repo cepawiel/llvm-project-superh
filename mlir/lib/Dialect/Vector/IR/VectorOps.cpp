@@ -23,6 +23,7 @@
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/BlockAndValueMapping.h"
 #include "mlir/IR/Builders.h"
+#include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/DialectImplementation.h"
@@ -30,9 +31,13 @@
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/TypeUtilities.h"
 #include "mlir/Support/LLVM.h"
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringSet.h"
 #include "llvm/ADT/TypeSwitch.h"
 #include "llvm/ADT/bit.h"
+
+#include <cassert>
 #include <numeric>
 
 #include "mlir/Dialect/Vector/IR/VectorOpsDialect.cpp.inc"
@@ -1623,12 +1628,7 @@ public:
       return failure();
 
     auto vecTy = sourceVector.getType().cast<VectorType>();
-    ArrayAttr positions = extractOp.getPosition();
     if (vecTy.isScalable())
-      return failure();
-    // Do not allow extracting sub-vectors to limit the size of the generated
-    // constants.
-    if (vecTy.getRank() != static_cast<int64_t>(positions.size()))
       return failure();
 
     // The splat case is handled by `ExtractOpSplatConstantFolder`.
@@ -1636,11 +1636,25 @@ public:
     if (!dense || dense.isSplat())
       return failure();
 
-    // Calculate the linearized position.
-    int64_t elemPosition =
-        linearize(getI64SubArray(positions), computeStrides(vecTy.getShape()));
-    Attribute elementValue = *(dense.value_begin<Attribute>() + elemPosition);
-    rewriter.replaceOpWithNewOp<arith::ConstantOp>(extractOp, elementValue);
+    // Calculate the linearized position of the continous chunk of elements to
+    // extract.
+    llvm::SmallVector<int64_t> completePositions(vecTy.getRank(), 0);
+    llvm::copy(getI64SubArray(extractOp.getPosition()),
+               completePositions.begin());
+    int64_t elemBeginPosition =
+        linearize(completePositions, computeStrides(vecTy.getShape()));
+    auto denseValuesBegin = dense.value_begin<Attribute>() + elemBeginPosition;
+
+    Attribute newAttr;
+    if (auto resVecTy = extractOp.getType().dyn_cast<VectorType>()) {
+      SmallVector<Attribute> elementValues(
+          denseValuesBegin, denseValuesBegin + resVecTy.getNumElements());
+      newAttr = DenseElementsAttr::get(resVecTy, elementValues);
+    } else {
+      newAttr = *denseValuesBegin;
+    }
+
+    rewriter.replaceOpWithNewOp<arith::ConstantOp>(extractOp, newAttr);
     return success();
   }
 };
@@ -2670,27 +2684,116 @@ public:
 };
 
 // Pattern to rewrite a ExtractStridedSliceOp(splat ConstantOp) -> ConstantOp.
-class StridedSliceConstantFolder final
+class StridedSliceSplatConstantFolder final
     : public OpRewritePattern<ExtractStridedSliceOp> {
 public:
   using OpRewritePattern::OpRewritePattern;
 
   LogicalResult matchAndRewrite(ExtractStridedSliceOp extractStridedSliceOp,
                                 PatternRewriter &rewriter) const override {
-    // Return if 'extractStridedSliceOp' operand is not defined by a
+    // Return if 'ExtractStridedSliceOp' operand is not defined by a splat
     // ConstantOp.
-    auto constantOp =
-        extractStridedSliceOp.getVector().getDefiningOp<arith::ConstantOp>();
-    if (!constantOp)
+    Value sourceVector = extractStridedSliceOp.getVector();
+    Attribute vectorCst;
+    if (!matchPattern(sourceVector, m_Constant(&vectorCst)))
       return failure();
-    auto dense = constantOp.getValue().dyn_cast<SplatElementsAttr>();
-    if (!dense)
+
+    auto splat = vectorCst.dyn_cast<SplatElementsAttr>();
+    if (!splat)
       return failure();
-    auto newAttr = DenseElementsAttr::get(extractStridedSliceOp.getType(),
-                                          dense.getSplatValue<Attribute>());
+
+    auto newAttr = SplatElementsAttr::get(extractStridedSliceOp.getType(),
+                                          splat.getSplatValue<Attribute>());
     rewriter.replaceOpWithNewOp<arith::ConstantOp>(extractStridedSliceOp,
                                                    newAttr);
     return success();
+  }
+};
+
+// Pattern to rewrite a ExtractStridedSliceOp(non-splat ConstantOp) ->
+// ConstantOp.
+class StridedSliceNonSplatConstantFolder final
+    : public OpRewritePattern<ExtractStridedSliceOp> {
+public:
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(ExtractStridedSliceOp extractStridedSliceOp,
+                                PatternRewriter &rewriter) const override {
+    // Return if 'ExtractStridedSliceOp' operand is not defined by a non-splat
+    // ConstantOp.
+    Value sourceVector = extractStridedSliceOp.getVector();
+    Attribute vectorCst;
+    if (!matchPattern(sourceVector, m_Constant(&vectorCst)))
+      return failure();
+
+    // The splat case is handled by `StridedSliceSplatConstantFolder`.
+    auto dense = vectorCst.dyn_cast<DenseElementsAttr>();
+    if (!dense || dense.isSplat())
+      return failure();
+
+    // TODO: Handle non-unit strides when they become available.
+    if (extractStridedSliceOp.hasNonUnitStrides())
+      return failure();
+
+    auto sourceVecTy = sourceVector.getType().cast<VectorType>();
+    ArrayRef<int64_t> sourceShape = sourceVecTy.getShape();
+    SmallVector<int64_t, 4> sourceStrides = computeStrides(sourceShape);
+
+    VectorType sliceVecTy = extractStridedSliceOp.getType();
+    ArrayRef<int64_t> sliceShape = sliceVecTy.getShape();
+    int64_t sliceRank = sliceVecTy.getRank();
+
+    // Expand offsets and sizes to match the vector rank.
+    SmallVector<int64_t, 4> offsets(sliceRank, 0);
+    llvm::copy(getI64SubArray(extractStridedSliceOp.getOffsets()),
+               offsets.begin());
+
+    SmallVector<int64_t, 4> sizes(sourceShape.begin(), sourceShape.end());
+    llvm::copy(getI64SubArray(extractStridedSliceOp.getSizes()), sizes.begin());
+
+    // Calcualte the slice elements by enumerating all slice positions and
+    // linearizing them. The enumeration order is lexicographic which yields a
+    // sequence of monotonically increasing linearized position indices.
+    auto denseValuesBegin = dense.value_begin<Attribute>();
+    SmallVector<Attribute> sliceValues;
+    sliceValues.reserve(sliceVecTy.getNumElements());
+    SmallVector<int64_t> currSlicePosition(offsets.begin(), offsets.end());
+    do {
+      int64_t linearizedPosition = linearize(currSlicePosition, sourceStrides);
+      assert(linearizedPosition < sourceVecTy.getNumElements() &&
+             "Invalid index");
+      sliceValues.push_back(*(denseValuesBegin + linearizedPosition));
+    } while (succeeded(incPosition(currSlicePosition, sliceShape, offsets)));
+
+    assert(static_cast<int64_t>(sliceValues.size()) ==
+               sliceVecTy.getNumElements() &&
+           "Invalid number of slice elements");
+    auto newAttr = DenseElementsAttr::get(sliceVecTy, sliceValues);
+    rewriter.replaceOpWithNewOp<arith::ConstantOp>(extractStridedSliceOp,
+                                                   newAttr);
+    return success();
+  }
+
+private:
+  // Calculate the next `position` in the n-D vector of size `shape`,
+  // applying an offset `offsets`. Modifies the `position` in place.
+  // Returns a failure when `position` becomes the end position.
+  static LogicalResult incPosition(MutableArrayRef<int64_t> position,
+                                   ArrayRef<int64_t> shape,
+                                   ArrayRef<int64_t> offsets) {
+    assert(position.size() == shape.size());
+    assert(position.size() == offsets.size());
+    for (auto [posInDim, dimSize, offsetInDim] :
+         llvm::reverse(llvm::zip(position, shape, offsets))) {
+      ++posInDim;
+      if (posInDim < dimSize + offsetInDim)
+        return success();
+
+      // Carry the overflow to the next loop iteration.
+      posInDim = offsetInDim;
+    }
+
+    return failure();
   }
 };
 
@@ -2760,8 +2863,9 @@ void ExtractStridedSliceOp::getCanonicalizationPatterns(
     RewritePatternSet &results, MLIRContext *context) {
   // Pattern to rewrite a ExtractStridedSliceOp(ConstantMaskOp) ->
   // ConstantMaskOp and ExtractStridedSliceOp(ConstantOp) -> ConstantOp.
-  results.add<StridedSliceConstantMaskFolder, StridedSliceConstantFolder,
-              StridedSliceBroadcast, StridedSliceSplat>(context);
+  results.add<StridedSliceConstantMaskFolder, StridedSliceSplatConstantFolder,
+              StridedSliceNonSplatConstantFolder, StridedSliceBroadcast,
+              StridedSliceSplat>(context);
 }
 
 //===----------------------------------------------------------------------===//
