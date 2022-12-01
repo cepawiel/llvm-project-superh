@@ -7,6 +7,7 @@ add_custom_target(ClangIncludeCleanerUnitTests)
 add_unittest(ClangIncludeCleanerUnitTests ClangIncludeCleanerTests
   AnalysisTest.cpp
   FindHeadersTest.cpp
+  LocateSymbolTest.cpp
   RecordTest.cpp
   TypesTest.cpp
   WalkASTTest.cpp
@@ -19,6 +20,7 @@ target_include_directories(ClangIncludeCleanerTests
 clang_target_link_libraries(ClangIncludeCleanerTests
   PRIVATE
   clangAST
+  clangASTMatchers
   clangBasic
   clangFrontend
   clangLex
