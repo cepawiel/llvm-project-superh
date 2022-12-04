@@ -97,7 +97,7 @@ public:
     template <typename T>
     ArrayRef<T> copyInto(ArrayRef<T> elements) {
       if (elements.empty())
-        return llvm::None;
+        return std::nullopt;
       auto result = allocator.Allocate<T>(elements.size());
       std::uninitialized_copy(elements.begin(), elements.end(), result);
       return ArrayRef<T>(result, elements.size());
@@ -149,7 +149,7 @@ public:
   void registerParametricStorageType(TypeID id) {
     // If the storage is trivially destructible, we don't need a destructor
     // function.
-    if (std::is_trivially_destructible<Storage>::value)
+    if constexpr (std::is_trivially_destructible_v<Storage>)
       return registerParametricStorageTypeImpl(id, nullptr);
     registerParametricStorageTypeImpl(id, [](BaseStorage *storage) {
       static_cast<Storage *>(storage)->~Storage();
@@ -178,7 +178,7 @@ public:
   }
   template <typename Storage>
   void registerSingletonStorageType(TypeID id) {
-    registerSingletonStorageType<Storage>(id, llvm::None);
+    registerSingletonStorageType<Storage>(id, std::nullopt);
   }
   /// Utility override when the storage type represents the type id.
   template <typename Storage>
