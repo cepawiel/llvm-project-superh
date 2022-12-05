@@ -639,7 +639,8 @@ elementwiseMatchAndRewriteHelper(Operation *operation,
       });
 
   if (didEncounterError)
-    return failure();
+    return rewriter.notifyMatchFailure(
+        operation, "unable to create linalg.generic body for elementwise op");
 
   rewriter.replaceOp(operation, linalgOp->getResults());
   return success();
@@ -816,7 +817,8 @@ static LogicalResult reduceMatchAndRewriteHelper(Operation *op, uint64_t axis,
       });
 
   if (!didEncounterError)
-    return failure();
+    return rewriter.notifyMatchFailure(
+        op, "unable to create linalg.generic body for reduce op");
 
   SmallVector<ReassociationExprs, 4> reassociationMap;
   uint64_t expandInputRank =
@@ -1086,7 +1088,7 @@ public:
                                 PatternRewriter &rewriter) const final {
     DenseIntElementsAttr perms;
     if (!matchPattern(op.getPerms(), m_Constant(&perms))) {
-      return failure();
+      return rewriter.notifyMatchFailure(op, "unmatched permutation tensor");
     }
 
     auto loc = op.getLoc();
@@ -1348,7 +1350,8 @@ public:
 
     // TODO(suderman): These string values should be declared the TOSA dialect.
     if (op.getMode() != "NEAREST_NEIGHBOR" && op.getMode() != "BILINEAR")
-      return failure();
+      return rewriter.notifyMatchFailure(
+          op, "tosa.resize mode should be NEAREST_NEIGHBOR or BILINEAR");
 
     const bool isBilinear = op.getMode() == "BILINEAR";
 
@@ -1439,11 +1442,13 @@ public:
     auto dynamicDimsOr =
         checkHasDynamicBatchDims(rewriter, op, {input, op.getOutput()});
     if (!dynamicDimsOr.has_value())
-      return failure();
+      return rewriter.notifyMatchFailure(
+          op, "unable to get dynamic dimensions of tosa.resize");
     SmallVector<Value> dynamicDims = dynamicDimsOr.value();
 
     if (op.getMode() != "NEAREST_NEIGHBOR" && op.getMode() != "BILINEAR")
-      return failure();
+      return rewriter.notifyMatchFailure(
+          op, "tosa.resize mode should be NEAREST_NEIGHBOR or BILINEAR");
 
     auto emptyTensor = rewriter.create<tensor::EmptyOp>(
         loc, resultTy.getShape(), resultElementTy, dynamicDims);
@@ -1552,8 +1557,8 @@ public:
       y = rewriter.create<arith::AddIOp>(loc, y, yOffset);
       x = rewriter.create<arith::AddIOp>(loc, x, xOffset);
 
-      iy = rewriter.create<arith::DivUIOp>(loc, y, yScaleN);
-      ix = rewriter.create<arith::DivUIOp>(loc, x, xScaleN);
+      iy = rewriter.create<arith::DivSIOp>(loc, y, yScaleN);
+      ix = rewriter.create<arith::DivSIOp>(loc, x, xScaleN);
 
       Value tempY = rewriter.create<arith::MulIOp>(loc, iy, yScaleN);
       Value tempX = rewriter.create<arith::MulIOp>(loc, ix, xScaleN);
@@ -1578,14 +1583,12 @@ public:
         xPred = rewriter.create<arith::CmpFOp>(loc, arith::CmpFPredicate::OGE,
                                                dx, halfVal);
       } else {
-        Value yScaleNHalfVal =
-            rewriter.create<arith::ShRSIOp>(loc, yScaleN, oneVal);
-        Value xScaleNHalfVal =
-            rewriter.create<arith::ShRSIOp>(loc, xScaleN, oneVal);
+        Value dyDoubled = rewriter.create<arith::ShLIOp>(loc, dy, oneVal);
+        Value dxDoubled = rewriter.create<arith::ShLIOp>(loc, dx, oneVal);
         yPred = rewriter.create<arith::CmpIOp>(loc, arith::CmpIPredicate::sge,
-                                               dy, yScaleNHalfVal);
+                                               dyDoubled, yScaleN);
         xPred = rewriter.create<arith::CmpIOp>(loc, arith::CmpIPredicate::sge,
-                                               dx, xScaleNHalfVal);
+                                               dxDoubled, xScaleN);
       }
 
       auto yOffset =
@@ -2149,7 +2152,8 @@ public:
     auto dynamicDimsOr = checkHasDynamicBatchDims(
         rewriter, op, {input, indices, op.getOutput()});
     if (!dynamicDimsOr.has_value())
-      return failure();
+      return rewriter.notifyMatchFailure(
+          op, "tosa.gather currently only supports dynamic batch dimensions");
     SmallVector<Value> dynamicDims = dynamicDimsOr.value();
 
     auto resultElementTy = resultTy.getElementType();
