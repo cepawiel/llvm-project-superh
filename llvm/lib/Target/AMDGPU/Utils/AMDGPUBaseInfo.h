@@ -10,7 +10,6 @@
 #define LLVM_LIB_TARGET_AMDGPU_UTILS_AMDGPUBASEINFO_H
 
 #include "SIDefines.h"
-#include "llvm/ADT/Optional.h"
 #include "llvm/IR/CallingConv.h"
 #include "llvm/Support/Alignment.h"
 #include <array>
@@ -32,6 +31,7 @@ class MCRegisterInfo;
 class MCSubtargetInfo;
 class StringRef;
 class Triple;
+class raw_ostream;
 
 namespace amdhsa {
 struct kernel_descriptor_t;
