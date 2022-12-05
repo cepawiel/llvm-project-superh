@@ -2845,7 +2845,7 @@ private:
   // - If the value is assumed, then stop.
   // - If the value is known but undef, then consider it UB.
   // - Otherwise, do specific processing with the simplified value.
-  // We return None in the first 2 cases to signify that an appropriate
+  // We return std::nullopt in the first 2 cases to signify that an appropriate
   // action was taken and the caller should stop.
   // Otherwise, we return the simplified value that the caller should
   // use for specific processing.
@@ -9617,7 +9617,7 @@ private:
       Unreachable.erase(&Fn);
     }
 
-    /// If there is no information about the function None is returned.
+    /// If there is no information about the function std::nullopt is returned.
     Optional<bool> isCachedReachable(const Function &Fn) {
       // Assume that we can reach the function.
       // TODO: Be more specific with the unknown callee.

@@ -462,7 +462,7 @@ void OutlinableRegion::reattachCandidate() {
 /// \param GVNToConstant - The mapping of global value number to Constants.
 /// \returns true if the Value matches the Constant mapped to by V and false if
 /// it \p V is a Constant but does not match.
-/// \returns None if \p V is not a Constant.
+/// \returns std::nullopt if \p V is not a Constant.
 static Optional<bool>
 constantMatches(Value *V, unsigned GVN,
                 DenseMap<unsigned, Constant *> &GVNToConstant) {
@@ -1171,8 +1171,8 @@ static hash_code encodePHINodeData(PHINodeData &PND) {
 /// \param PN - The PHINode we are analyzing.
 /// \param Blocks - The blocks for the region we are analyzing.
 /// \param AggArgIdx - The argument \p PN will be stored into.
-/// \returns An optional holding the assigned canonical number, or None if
-/// there is some attribute of the PHINode blocking it from being used.
+/// \returns An optional holding the assigned canonical number, or std::nullopt
+/// if there is some attribute of the PHINode blocking it from being used.
 static Optional<unsigned> getGVNForPHINode(OutlinableRegion &Region,
                                            PHINode *PN,
                                            DenseSet<BasicBlock *> &Blocks,
