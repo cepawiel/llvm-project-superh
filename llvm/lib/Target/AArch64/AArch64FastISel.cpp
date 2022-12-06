@@ -510,7 +510,7 @@ unsigned AArch64FastISel::materializeGV(const GlobalValue *GV) {
       // are not exactly 1:1 with FastISel so we cannot easily abstract this
       // out. At some point, it would be nice to find a way to not have this
       // duplciate code.
-      unsigned DstReg = createResultReg(&AArch64::GPR64spRegClass);
+      unsigned DstReg = createResultReg(&AArch64::GPR64commonRegClass);
       BuildMI(*FuncInfo.MBB, FuncInfo.InsertPt, MIMD, TII.get(AArch64::MOVKXi),
               DstReg)
           .addReg(ADRPReg)
