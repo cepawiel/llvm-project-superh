@@ -10,27 +10,24 @@
 #
 ##===----------------------------------------------------------------------===##
 
-# Plugin Interface library.
-add_llvm_library(PluginInterface PluginInterface.cpp GlobalHandler.cpp
-  BUILDTREE_ONLY
+# NOTE: Don't try to build `PluginInterface` using `add_llvm_library` because we
+# don't want to export `PluginInterface` while `add_llvm_library` requires that.
+add_library(PluginInterface OBJECT PluginInterface.cpp GlobalHandler.cpp)
 
-  LINK_COMPONENTS
-    Support
+# This is required when using LLVM libraries.
+llvm_update_compile_flags(PluginInterface)
 
-  LINK_LIBS
+if (LLVM_LINK_LLVM_DYLIB)
+  set(llvm_libs LLVM)
+else()
+  llvm_map_components_to_libnames(llvm_libs Support)
+endif()
+
+target_link_libraries(PluginInterface
+  PUBLIC
+    ${llvm_libs}
     elf_common
-)
-
-# NOTE: Please don't move `MemoryManager` to `LINK_LIBS` above, even though it
-# is an interface "library". Don't expect it to be treated as a "library" such
-# that we just need to link it via CMake and its include path will be updated
-# automatically. It is because `PluginInterface` is a static library here, and
-# per CMake design (which makes sense), privately linked libraries have to be
-# exported. However, there is no a typical way in CMake to export an interface
-# library without install rules. We apparently don't need `MemoryManager`'s
-# header out of the build tree.
-target_include_directories(PluginInterface PRIVATE
-  $<TARGET_PROPERTY:MemoryManager,INTERFACE_INCLUDE_DIRECTORIES>
+    MemoryManager
 )
 
 # Define the TARGET_NAME and DEBUG_PREFIX.

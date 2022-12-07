@@ -52,7 +52,7 @@ void TensorSpec::toJSON(json::OStream &OS) const {
     OS.attribute("port", port());
     OS.attributeArray("shape", [&]() {
       for (size_t D : shape())
-        OS.value(D);
+        OS.value(static_cast<int64_t>(D));
     });
   });
 }
