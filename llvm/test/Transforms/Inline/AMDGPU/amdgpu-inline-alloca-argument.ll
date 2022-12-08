@@ -1,4 +1,4 @@
-; RUN: opt -mtriple=amdgcn--amdhsa -S -inline -inline-threshold=0 < %s | FileCheck %s
+; RUN: opt -mtriple=amdgcn--amdhsa -S -passes=inline -inline-threshold=0 < %s | FileCheck %s
 ; RUN: opt -mtriple=amdgcn--amdhsa -S -passes=inline -inline-threshold=0 < %s | FileCheck %s
 
 target datalayout = "e-p:64:64-p1:64:64-p2:32:32-p3:32:32-p4:64:64-p5:32:32-p6:32:32-i64:64-v16:16-v24:32-v32:32-v48:64-v96:128-v192:256-v256:256-v512:512-v1024:1024-v2048:2048-n32:64-S32-A5"
@@ -45,8 +45,7 @@ entry:
 ; addrspacecasted' alloca.
 ; CHECK-LABEL: @test_inliner_flat_ptr(
 ; CHECK: call i32 @llvm.amdgcn.workitem.id.x()
-; CHECK-NOT: call
-; CHECK-NOT: call
+; CHECK-NOT: call {{[.*]}}@
 define amdgpu_kernel void @test_inliner_flat_ptr(float addrspace(1)* nocapture %a, i32 %n) {
 entry:
   %pvt_arr = alloca [64 x float], align 4, addrspace(5)
