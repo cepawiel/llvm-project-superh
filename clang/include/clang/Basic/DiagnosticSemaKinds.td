@@ -2646,10 +2646,6 @@ def err_invalid_consteval_take_address : Error<
   " of an immediate invocation">;
 def err_invalid_consteval_call : Error<
   "call to consteval function %q0 is not a constant expression">;
-def note_invalid_consteval_initializer : Note<
-  "in the default initalizer of %0">;
-def note_invalid_consteval_initializer_here : Note<
-  "initialized here %0">;
 def err_invalid_consteval_decl_kind : Error<
   "%0 cannot be declared consteval">;
 def err_invalid_constexpr : Error<
@@ -11739,4 +11735,9 @@ def err_cast_from_randomized_struct : Error<
 // LoongArch-specific Diagnostics
 def err_loongarch_builtin_requires_la64 : Error<
   "this builtin requires target: loongarch64">;
+
+// Unsafe buffer usage diagnostics.
+def warn_unsafe_buffer_usage : Warning<
+  "unchecked operation on raw buffer in expression">,
+  InGroup<DiagGroup<"unsafe-buffer-usage">>, DefaultIgnore;
 } // end of sema component.
