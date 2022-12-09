@@ -12,8 +12,14 @@ module polymorphic_test
     procedure :: elemental_fct
     procedure :: elemental_sub
     procedure, pass(this) :: elemental_sub_pass
+    procedure :: read_p1
+    procedure :: write_p1
+    generic :: read(formatted) => read_p1
+    generic :: write(formatted) => write_p1
     generic :: assignment(=) => assign_p1_int
     procedure :: host_assoc
+    procedure, pass(poly) :: lt
+    generic :: operator(<) => lt
   end type
 
   type, extends(p1) :: p2
@@ -32,6 +38,10 @@ module polymorphic_test
 
   type p3
     class(p3), pointer :: p(:)
+  end type
+
+  type outer
+    type(p1) :: inner
   end type
 
   contains
@@ -66,6 +76,12 @@ module polymorphic_test
     class(p1), intent(inout) :: this
     this%a = this%a * this%b + c
   end subroutine
+
+  logical elemental function lt(i, poly)
+    integer, intent(in) :: i
+    class(p1), intent(in) :: poly
+    lt = i < poly%a
+  End Function
 
   ! Test correct access to polymorphic entity component.
   subroutine component_access(p)
@@ -669,4 +685,63 @@ module polymorphic_test
 ! CHECK:   fir.dispatch "elemental_sub_pass"(%[[EMBOXED]] : !fir.class<!fir.type<_QMpolymorphic_testTp1{a:i32,b:i32}>>) (%{{.*}}, %[[EMBOXED]] : !fir.ref<i32>, !fir.class<!fir.type<_QMpolymorphic_testTp1{a:i32,b:i32}>>) {pass_arg_pos = 1 : i32}
 ! CHECK: }
 
+  subroutine write_p1(dtv, unit, iotype, v_list, iostat, iomsg)
+    class(p1), intent(in) :: dtv
+    integer, intent(in) :: unit
+    character(*), intent(in) :: iotype
+    integer, intent(in) :: v_list(:)
+    integer, intent(out) :: iostat
+    character(*), intent(inout) :: iomsg
+    ! dummy subroutine for testing purpose
+  end subroutine
+
+  subroutine read_p1(dtv, unit, iotype, v_list, iostat, iomsg)
+    class(p1), intent(inout) :: dtv
+    integer, intent(in) :: unit
+    character(*), intent(in) :: iotype
+    integer, intent(in) :: v_list(:)
+    integer, intent(out) :: iostat
+    character(*), intent(inout) :: iomsg
+    ! dummy subroutine for testing purpose
+  end subroutine
+
+  subroutine test_polymorphic_io()
+    type(p1), target :: t
+    class(p1), pointer :: p
+    open(17, form='formatted', access='stream')
+    write(17, 1) t
+    1 Format(1X,I10)
+    p => t
+    rewind(17)
+    read(17, 1) p
+  end subroutine
+
+! CHECK-LABEL: func.func @_QMpolymorphic_testPtest_polymorphic_io() {
+! CHECK: %[[P:.*]] = fir.alloca !fir.class<!fir.ptr<!fir.type<_QMpolymorphic_testTp1{a:i32,b:i32}>>> {bindc_name = "p", uniq_name = "_QMpolymorphic_testFtest_polymorphic_ioEp"}
+! CHECK: %[[LOAD_P:.*]] = fir.load %[[P]] : !fir.ref<!fir.class<!fir.ptr<!fir.type<_QMpolymorphic_testTp1{a:i32,b:i32}>>>>
+! CHECK: %[[BOX_NONE:.*]] = fir.convert %[[LOAD_P]] : (!fir.class<!fir.ptr<!fir.type<_QMpolymorphic_testTp1{a:i32,b:i32}>>>) -> !fir.box<none>
+! CHECK: %{{.*}} = fir.call @_FortranAioInputDescriptor(%{{.*}}, %[[BOX_NONE]]) {{.*}} : (!fir.ref<i8>, !fir.box<none>) -> i1
+
 end module
+
+program test
+  use polymorphic_test
+  type(outer), allocatable :: o
+  integer :: i(5)
+  logical :: l(5)
+  allocate(o)
+
+  l = i < o%inner
+end program
+
+! CHECK-LABEL: func.func @_QQmain() {
+! CHECK: %[[ADDR_O:.*]] = fir.address_of(@_QFEo) : !fir.ref<!fir.box<!fir.heap<!fir.type<_QMpolymorphic_testTouter{inner:!fir.type<_QMpolymorphic_testTp1{a:i32,b:i32}>}>>>>
+! CHECK: %[[BOX_NONE:.*]] = fir.convert %[[ADDR_O]] : (!fir.ref<!fir.box<!fir.heap<!fir.type<_QMpolymorphic_testTouter{inner:!fir.type<_QMpolymorphic_testTp1{a:i32,b:i32}>}>>>>) -> !fir.ref<!fir.box<none>>
+! CHECK: %{{.*}} = fir.call @_FortranAAllocatableAllocate(%[[BOX_NONE]], %{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}) {{.*}} : (!fir.ref<!fir.box<none>>, i1, !fir.box<none>, !fir.ref<i8>, i32) -> i32
+! CHECK: %[[O:.*]] = fir.load %[[ADDR_O]] : !fir.ref<!fir.box<!fir.heap<!fir.type<_QMpolymorphic_testTouter{inner:!fir.type<_QMpolymorphic_testTp1{a:i32,b:i32}>}>>>>
+! CHECK: %[[FIELD_INNER:.*]] = fir.field_index inner, !fir.type<_QMpolymorphic_testTouter{inner:!fir.type<_QMpolymorphic_testTp1{a:i32,b:i32}>}>
+! CHECK: %[[COORD_INNER:.*]] = fir.coordinate_of %[[O]], %[[FIELD_INNER]] : (!fir.box<!fir.heap<!fir.type<_QMpolymorphic_testTouter{inner:!fir.type<_QMpolymorphic_testTp1{a:i32,b:i32}>}>>>, !fir.field) -> !fir.ref<!fir.type<_QMpolymorphic_testTp1{a:i32,b:i32}>>
+! CHECK: %{{.*}} = fir.do_loop %{{.*}} = %{{.*}} to %{{.*}} step %{{.*}} unordered iter_args(%arg1 = %9) -> (!fir.array<5x!fir.logical<4>>) {
+! CHECK:   %[[EMBOXED:.*]] = fir.embox %[[COORD_INNER]] : (!fir.ref<!fir.type<_QMpolymorphic_testTp1{a:i32,b:i32}>>) -> !fir.class<!fir.type<_QMpolymorphic_testTp1{a:i32,b:i32}>>
+! CHECK:   %{{.*}} = fir.call @_QMpolymorphic_testPlt(%17, %[[EMBOXED]]) {{.*}} : (!fir.ref<i32>, !fir.class<!fir.type<_QMpolymorphic_testTp1{a:i32,b:i32}>>) -> !fir.logical<4>
+! CHECK:  }

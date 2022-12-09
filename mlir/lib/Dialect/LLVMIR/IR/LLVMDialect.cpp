@@ -2006,9 +2006,8 @@ void LLVMFuncOp::build(OpBuilder &builder, OperationState &result,
 
   assert(type.cast<LLVMFunctionType>().getNumParams() == argAttrs.size() &&
          "expected as many argument attribute lists as arguments");
-  function_interface_impl::addArgAndResultAttrs(
-      builder, result, argAttrs, /*resultAttrs=*/std::nullopt,
-      getArgAttrsAttrName(result.name), getResAttrsAttrName(result.name));
+  function_interface_impl::addArgAndResultAttrs(builder, result, argAttrs,
+                                                /*resultAttrs=*/std::nullopt);
 }
 
 // Builds an LLVM function type from the given lists of input and output types.
@@ -2091,14 +2090,13 @@ ParseResult LLVMFuncOp::parse(OpAsmParser &parser, OperationState &result) {
                             function_interface_impl::VariadicFlag(isVariadic));
   if (!type)
     return failure();
-  result.addAttribute(getFunctionTypeAttrName(result.name),
+  result.addAttribute(FunctionOpInterface::getTypeAttrName(),
                       TypeAttr::get(type));
 
   if (failed(parser.parseOptionalAttrDictWithKeyword(result.attributes)))
     return failure();
-  function_interface_impl::addArgAndResultAttrs(
-      parser.getBuilder(), result, entryArgs, resultAttrs,
-      getArgAttrsAttrName(result.name), getResAttrsAttrName(result.name));
+  function_interface_impl::addArgAndResultAttrs(parser.getBuilder(), result,
+                                                entryArgs, resultAttrs);
 
   auto *body = result.addRegion();
   OptionalParseResult parseResult =
@@ -2132,9 +2130,8 @@ void LLVMFuncOp::print(OpAsmPrinter &p) {
   function_interface_impl::printFunctionSignature(p, *this, argTypes,
                                                   isVarArg(), resTypes);
   function_interface_impl::printFunctionAttributes(
-      p, *this,
-      {getFunctionTypeAttrName(), getArgAttrsAttrName(), getResAttrsAttrName(),
-       getLinkageAttrName(), getCConvAttrName()});
+      p, *this, argTypes.size(), resTypes.size(),
+      {getLinkageAttrName(), getCConvAttrName()});
 
   // Print the body if this is not an external function.
   Region &body = getBody();
