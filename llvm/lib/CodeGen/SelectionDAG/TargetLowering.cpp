@@ -1133,12 +1133,11 @@ bool TargetLowering::SimplifyDemandedBits(
     std::optional<unsigned> MaxVScale = Attr.getVScaleRangeMax();
     if (!MaxVScale.has_value())
       return false;
-    int64_t VScaleResultUpperbound =
-        *MaxVScale * Op.getConstantOperandAPInt(0).getSExtValue();
-    bool Negative = VScaleResultUpperbound < 0;
+    APInt VScaleResultUpperbound = *MaxVScale * Op.getConstantOperandAPInt(0);
+    bool Negative = VScaleResultUpperbound.isNegative();
     if (Negative)
       VScaleResultUpperbound = ~VScaleResultUpperbound;
-    unsigned RequiredBits = Log2_64(VScaleResultUpperbound) + 1;
+    unsigned RequiredBits = VScaleResultUpperbound.getActiveBits();
     if (RequiredBits < BitWidth)
       (Negative ? Known.One : Known.Zero).setHighBits(BitWidth - RequiredBits);
     return false;
