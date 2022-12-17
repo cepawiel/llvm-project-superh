@@ -45,9 +45,9 @@ using remove_cvref_t // NOLINT(readability-identifier-naming)
 // C++23.
 template <typename T, typename Function>
 auto transformOptional(const std::optional<T> &O, const Function &F)
-    -> std::optional<decltype(F(O.value()))> {
+    -> std::optional<decltype(F(*O))> {
   if (O)
-    return F(O.value());
+    return F(*O);
   return std::nullopt;
 }
 
@@ -55,9 +55,9 @@ auto transformOptional(const std::optional<T> &O, const Function &F)
 // C++23.
 template <typename T, typename Function>
 auto transformOptional(std::optional<T> &&O, const Function &F)
-    -> std::optional<decltype(F(std::move(O).value()))> {
+    -> std::optional<decltype(F(*std::move(O)))> {
   if (O)
-    return F(std::move(O).value());
+    return F(*std::move(O));
   return std::nullopt;
 }
 
@@ -65,9 +65,9 @@ auto transformOptional(std::optional<T> &&O, const Function &F)
 // complete.
 template <typename T, typename Function>
 auto transformOptional(const Optional<T> &O, const Function &F)
-    -> Optional<decltype(F(O.value()))> {
+    -> Optional<decltype(F(*O))> {
   if (O)
-    return F(O.value());
+    return F(*O);
   return std::nullopt;
 }
 
@@ -75,9 +75,9 @@ auto transformOptional(const Optional<T> &O, const Function &F)
 // complete.
 template <typename T, typename Function>
 auto transformOptional(Optional<T> &&O, const Function &F)
-    -> Optional<decltype(F(std::move(O).value()))> {
+    -> Optional<decltype(F(*std::move(O)))> {
   if (O)
-    return F(std::move(O).value());
+    return F(*std::move(O));
   return std::nullopt;
 }
 
