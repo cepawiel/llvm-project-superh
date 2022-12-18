@@ -42,8 +42,7 @@ public:
 
   Expected<InstructionBenchmark>
   runConfiguration(const BenchmarkCode &Configuration, unsigned NumRepetitions,
-                   unsigned LoopUnrollFactor,
-                   ArrayRef<std::unique_ptr<const SnippetRepetitor>> Repetitors,
+                   unsigned LoopUnrollFactor, const SnippetRepetitor &Repetitor,
                    bool DumpObjectToDisk) const;
 
   // Scratch space to run instructions that touch memory.
@@ -84,8 +83,12 @@ private:
   virtual Expected<std::vector<BenchmarkMeasure>>
   runMeasurements(const FunctionExecutor &Executor) const = 0;
 
-  Expected<std::string> writeObjectFile(const BenchmarkCode &Configuration,
-                                        const FillFunction &Fill) const;
+  Expected<SmallString<0>> assembleSnippet(const BenchmarkCode &BC,
+                                           const SnippetRepetitor &Repetitor,
+                                           unsigned MinInstructions,
+                                           unsigned LoopBodySize) const;
+
+  Expected<std::string> writeObjectFile(StringRef Buffer) const;
 
   const std::unique_ptr<ScratchSpace> Scratch;
 };
