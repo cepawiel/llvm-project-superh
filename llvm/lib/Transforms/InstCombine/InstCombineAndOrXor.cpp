@@ -3610,6 +3610,55 @@ static Instruction *canonicalizeAbs(BinaryOperator &Xor,
 }
 
 // Transform
+//   z = ~(x &/| y)
+// into:
+//   z = ((~x) |/& (~y))
+// iff both x and y are free to invert and all uses of z can be freely updated.
+bool InstCombinerImpl::sinkNotIntoLogicalOp(Instruction &I) {
+  Value *Op0, *Op1;
+  if (!match(&I, m_LogicalOp(m_Value(Op0), m_Value(Op1))))
+    return false;
+  Instruction::BinaryOps NewOpc =
+      match(&I, m_LogicalAnd()) ? Instruction::Or : Instruction::And;
+  bool IsBinaryOp = isa<BinaryOperator>(I);
+
+  // Can our users be adapted?
+  if (!InstCombiner::canFreelyInvertAllUsersOf(&I, /*IgnoredUser=*/nullptr))
+    return false;
+
+  // And can the operands be adapted?
+  for (Value *Op : {Op0, Op1})
+    if (!InstCombiner::isFreeToInvert(Op, /*WillInvertAllUses=*/true) ||
+        !InstCombiner::canFreelyInvertAllUsersOf(Op, /*IgnoredUser=*/&I))
+      return false;
+
+  for (Value **Op : {&Op0, &Op1}) {
+    Builder.SetInsertPoint(
+        &*cast<Instruction>(*Op)->getInsertionPointAfterDef());
+    Value *NotOp = Builder.CreateNot(*Op, (*Op)->getName() + ".not");
+    (*Op)->replaceUsesWithIf(NotOp,
+                             [NotOp](Use &U) { return U.getUser() != NotOp; });
+    freelyInvertAllUsersOf(NotOp, /*IgnoredUser=*/&I);
+    *Op = NotOp;
+  }
+
+  Builder.SetInsertPoint(I.getInsertionPointAfterDef());
+  Value *NewLogicOp;
+  if (IsBinaryOp)
+    NewLogicOp = Builder.CreateBinOp(NewOpc, Op0, Op1, I.getName() + ".not");
+  else
+    NewLogicOp =
+        Builder.CreateLogicalOp(NewOpc, Op0, Op1, I.getName() + ".not");
+
+  replaceInstUsesWith(I, NewLogicOp);
+  // We can not just create an outer `not`, it will most likely be immediately
+  // folded back, reconstructing our initial pattern, and causing an
+  // infinite combine loop, so immediately manually fold it away.
+  freelyInvertAllUsersOf(NewLogicOp);
+  return true;
+}
+
+// Transform
 //   z = (~x) &/| y
 // into:
 //   z = ~(x |/& (~y))
@@ -3626,11 +3675,13 @@ bool InstCombinerImpl::sinkNotIntoOtherHandOfLogicalOp(Instruction &I) {
   Value *NotOp1 = nullptr;
   Value **OpToInvert = nullptr;
   if (match(Op0, m_Not(m_Value(NotOp0))) &&
-      InstCombiner::isFreeToInvert(Op1, Op1->hasOneUse())) {
+      InstCombiner::isFreeToInvert(Op1, /*WillInvertAllUses=*/true) &&
+      InstCombiner::canFreelyInvertAllUsersOf(Op1, /*IgnoredUser=*/&I)) {
     Op0 = NotOp0;
     OpToInvert = &Op1;
   } else if (match(Op1, m_Not(m_Value(NotOp1))) &&
-             InstCombiner::isFreeToInvert(Op0, Op0->hasOneUse())) {
+             InstCombiner::isFreeToInvert(Op0, /*WillInvertAllUses=*/true) &&
+             InstCombiner::canFreelyInvertAllUsersOf(Op0, /*IgnoredUser=*/&I)) {
     Op1 = NotOp1;
     OpToInvert = &Op0;
   } else
@@ -3640,8 +3691,17 @@ bool InstCombinerImpl::sinkNotIntoOtherHandOfLogicalOp(Instruction &I) {
   if (!InstCombiner::canFreelyInvertAllUsersOf(&I, /*IgnoredUser=*/nullptr))
     return false;
 
-  *OpToInvert =
+  Builder.SetInsertPoint(
+      &*cast<Instruction>(*OpToInvert)->getInsertionPointAfterDef());
+  Value *NotOpToInvert =
       Builder.CreateNot(*OpToInvert, (*OpToInvert)->getName() + ".not");
+  (*OpToInvert)->replaceUsesWithIf(NotOpToInvert, [NotOpToInvert](Use &U) {
+    return U.getUser() != NotOpToInvert;
+  });
+  freelyInvertAllUsersOf(NotOpToInvert, /*IgnoredUser=*/&I);
+  *OpToInvert = NotOpToInvert;
+
+  Builder.SetInsertPoint(&*I.getInsertionPointAfterDef());
   Value *NewBinOp;
   if (IsBinaryOp)
     NewBinOp = Builder.CreateBinOp(NewOpc, Op0, Op1, I.getName() + ".not");
@@ -3694,23 +3754,6 @@ Instruction *InstCombinerImpl::foldNot(BinaryOperator &I) {
   // Is this a 'not' (~) fed by a binary operator?
   BinaryOperator *NotVal;
   if (match(NotOp, m_BinOp(NotVal))) {
-    if (NotVal->getOpcode() == Instruction::And ||
-        NotVal->getOpcode() == Instruction::Or) {
-      // Apply DeMorgan's Law when inverts are free:
-      // ~(X & Y) --> (~X | ~Y)
-      // ~(X | Y) --> (~X & ~Y)
-      if (isFreeToInvert(NotVal->getOperand(0),
-                         NotVal->getOperand(0)->hasOneUse()) &&
-          isFreeToInvert(NotVal->getOperand(1),
-                         NotVal->getOperand(1)->hasOneUse())) {
-        Value *NotX = Builder.CreateNot(NotVal->getOperand(0), "notlhs");
-        Value *NotY = Builder.CreateNot(NotVal->getOperand(1), "notrhs");
-        if (NotVal->getOpcode() == Instruction::And)
-          return BinaryOperator::CreateOr(NotX, NotY);
-        return BinaryOperator::CreateAnd(NotX, NotY);
-      }
-    }
-
     // ~((-X) | Y) --> (X - 1) & (~Y)
     if (match(NotVal,
               m_OneUse(m_c_Or(m_OneUse(m_Neg(m_Value(X))), m_Value(Y))))) {
@@ -3774,6 +3817,10 @@ Instruction *InstCombinerImpl::foldNot(BinaryOperator &I) {
     freelyInvertAllUsersOf(NotOp);
     return &I;
   }
+
+  if (auto *NotOpI = dyn_cast<Instruction>(NotOp))
+    if (sinkNotIntoLogicalOp(*NotOpI))
+      return &I;
 
   // Eliminate a bitwise 'not' op of 'not' min/max by inverting the min/max:
   // ~min(~X, ~Y) --> max(X, Y)
