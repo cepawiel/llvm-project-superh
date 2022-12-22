@@ -11,6 +11,7 @@
 
 #include "ARCTargetMachine.h"
 #include "ARC.h"
+#include "ARCMachineFunctionInfo.h"
 #include "ARCTargetTransformInfo.h"
 #include "TargetInfo/ARCTargetInfo.h"
 #include "llvm/CodeGen/Passes.h"
@@ -88,6 +89,8 @@ MachineFunctionInfo *ARCTargetMachine::createMachineFunctionInfo(
 // Force static initialization.
 extern "C" LLVM_EXTERNAL_VISIBILITY void LLVMInitializeARCTarget() {
   RegisterTargetMachine<ARCTargetMachine> X(getTheARCTarget());
+  PassRegistry &PR = *PassRegistry::getPassRegistry();
+  initializeARCDAGToDAGISelPass(PR);
 }
 
 TargetTransformInfo
