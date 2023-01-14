@@ -44,6 +44,7 @@
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include <memory>
+#include <optional>
 #include <ostream>
 #include <string>
 
@@ -114,7 +115,7 @@ public:
 
     private:
       TokenBuffer &Result;
-      llvm::Optional<TokenCollector> Collector;
+      std::optional<TokenCollector> Collector;
     };
 
     constexpr const char *FileName = "./input.cpp";

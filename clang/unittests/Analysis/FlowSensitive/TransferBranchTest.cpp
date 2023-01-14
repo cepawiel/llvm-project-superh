@@ -19,6 +19,7 @@
 #include "llvm/Testing/Annotations/Annotations.h"
 #include "llvm/Testing/Support/Error.h"
 #include "gtest/gtest.h"
+#include <optional>
 
 namespace clang::dataflow::test {
 namespace {
@@ -26,7 +27,7 @@ namespace {
 using namespace ast_matchers;
 
 struct TestLattice {
-  llvm::Optional<bool> Branch;
+  std::optional<bool> Branch;
   static TestLattice bottom() { return {}; }
 
   // Does not matter for this test, but we must provide some definition of join.

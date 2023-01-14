@@ -30,6 +30,7 @@
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/Casting.h"
 #include <cassert>
+#include <optional>
 #include <utility>
 
 namespace clang {
@@ -507,7 +508,7 @@ public:
         Paths = nullptr;
       }
     } else {
-      llvm::Optional<AmbiguityKind> SavedAK;
+      std::optional<AmbiguityKind> SavedAK;
       bool WasAmbiguous = false;
       if (ResultKind == Ambiguous) {
         SavedAK = Ambiguity;

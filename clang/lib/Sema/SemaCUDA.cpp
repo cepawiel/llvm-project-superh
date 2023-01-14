@@ -24,6 +24,7 @@
 #include "clang/Sema/Template.h"
 #include "llvm/ADT/Optional.h"
 #include "llvm/ADT/SmallVector.h"
+#include <optional>
 using namespace clang;
 
 template <typename AttrT> static bool hasExplicitAttr(const VarDecl *D) {
@@ -338,7 +339,7 @@ bool Sema::inferCUDATargetForImplicitSpecialMember(CXXRecordDecl *ClassDecl,
   if (!InClass || HasExplicitAttr)
     return false;
 
-  llvm::Optional<CUDAFunctionTarget> InferredTarget;
+  std::optional<CUDAFunctionTarget> InferredTarget;
 
   // We're going to invoke special member lookup; mark that these special
   // members are called from this one, and not from its caller.

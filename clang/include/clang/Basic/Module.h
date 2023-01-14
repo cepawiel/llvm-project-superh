@@ -33,6 +33,7 @@
 #include <cstdint>
 #include <ctime>
 #include <iterator>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -240,8 +241,8 @@ public:
     std::string FileName;
     bool IsUmbrella = false;
     bool HasBuiltinHeader = false;
-    Optional<off_t> Size;
-    Optional<time_t> ModTime;
+    std::optional<off_t> Size;
+    std::optional<time_t> ModTime;
   };
 
   /// Headers that are mentioned in the module map file but that we have not

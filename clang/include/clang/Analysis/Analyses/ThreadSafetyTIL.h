@@ -59,6 +59,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <iterator>
+#include <optional>
 #include <string>
 #include <utility>
 
@@ -957,7 +958,7 @@ public:
 
 private:
   SExpr* Rec;
-  mutable llvm::Optional<std::string> SlotName;
+  mutable std::optional<std::string> SlotName;
   const ValueDecl *Cvdecl;
 };
 

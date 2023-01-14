@@ -21,6 +21,7 @@
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/Optional.h"
 #include "llvm/ADT/PointerIntPair.h"
+#include <optional>
 
 namespace clang {
 /// Kinds of LV computation.  The linkage side of the computation is
@@ -91,8 +92,8 @@ class LinkageComputer {
     return QueryType(ND, Kind.toBits());
   }
 
-  llvm::Optional<LinkageInfo> lookup(const NamedDecl *ND,
-                                     LVComputationKind Kind) const {
+  std::optional<LinkageInfo> lookup(const NamedDecl *ND,
+                                    LVComputationKind Kind) const {
     auto Iter = CachedLinkageInfo.find(makeCacheKey(ND, Kind));
     if (Iter == CachedLinkageInfo.end())
       return std::nullopt;

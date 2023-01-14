@@ -30,6 +30,7 @@
 #include <list>
 #include <map>
 #include <memory>
+#include <optional>
 #include <set>
 #include <string>
 #include <utility>
@@ -532,7 +533,7 @@ public:
 };
 
 class PathDiagnosticEventPiece : public PathDiagnosticSpotPiece {
-  Optional<bool> IsPrunable;
+  std::optional<bool> IsPrunable;
 
 public:
   PathDiagnosticEventPiece(const PathDiagnosticLocation &pos,

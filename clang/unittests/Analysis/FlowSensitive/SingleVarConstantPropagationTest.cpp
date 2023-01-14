@@ -34,6 +34,7 @@
 #include "gtest/gtest.h"
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <ostream>
 #include <string>
 #include <utility>
@@ -60,7 +61,7 @@ struct ConstantPropagationLattice {
     }
   };
   // `None` is "bottom".
-  llvm::Optional<VarValue> Data;
+  std::optional<VarValue> Data;
 
   static constexpr ConstantPropagationLattice bottom() {
     return {std::nullopt};

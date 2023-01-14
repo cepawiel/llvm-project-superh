@@ -43,6 +43,7 @@
 #include "llvm/IR/Module.h"
 #include "llvm/Support/TypeSize.h"
 #include <cstdarg>
+#include <optional>
 
 using namespace clang;
 using namespace CodeGen;
@@ -152,8 +153,8 @@ static bool MustVisitNullValue(const Expr *E) {
 }
 
 /// If \p E is a widened promoted integer, get its base (unpromoted) type.
-static llvm::Optional<QualType> getUnwidenedIntegerType(const ASTContext &Ctx,
-                                                        const Expr *E) {
+static std::optional<QualType> getUnwidenedIntegerType(const ASTContext &Ctx,
+                                                       const Expr *E) {
   const Expr *Base = E->IgnoreImpCasts();
   if (E == Base)
     return std::nullopt;

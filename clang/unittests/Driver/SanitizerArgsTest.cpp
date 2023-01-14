@@ -27,6 +27,7 @@
 #include "gtest/gtest.h"
 #include <cstdlib>
 #include <memory>
+#include <optional>
 #include <string>
 using namespace clang;
 using namespace clang::driver;
@@ -88,7 +89,7 @@ private:
     return FS;
   }
 
-  llvm::Optional<Driver> DriverInstance;
+  std::optional<Driver> DriverInstance;
   std::unique_ptr<driver::Compilation> CompilationJob;
 };
 

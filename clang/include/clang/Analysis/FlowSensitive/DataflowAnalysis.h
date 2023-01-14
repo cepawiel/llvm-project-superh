@@ -15,6 +15,7 @@
 #define LLVM_CLANG_ANALYSIS_FLOWSENSITIVE_DATAFLOWANALYSIS_H
 
 #include <iterator>
+#include <optional>
 #include <type_traits>
 #include <utility>
 #include <vector>
@@ -189,7 +190,7 @@ template <typename LatticeT> struct DataflowAnalysisState {
 /// program point.
 template <typename AnalysisT>
 llvm::Expected<std::vector<
-    llvm::Optional<DataflowAnalysisState<typename AnalysisT::Lattice>>>>
+    std::optional<DataflowAnalysisState<typename AnalysisT::Lattice>>>>
 runDataflowAnalysis(
     const ControlFlowContext &CFCtx, AnalysisT &Analysis,
     const Environment &InitEnv,
@@ -215,8 +216,7 @@ runDataflowAnalysis(
   if (!TypeErasedBlockStates)
     return TypeErasedBlockStates.takeError();
 
-  std::vector<
-      llvm::Optional<DataflowAnalysisState<typename AnalysisT::Lattice>>>
+  std::vector<std::optional<DataflowAnalysisState<typename AnalysisT::Lattice>>>
       BlockStates;
   BlockStates.reserve(TypeErasedBlockStates->size());
 

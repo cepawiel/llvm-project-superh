@@ -31,6 +31,7 @@
 #include "llvm/Support/Casting.h"
 #include <cassert>
 #include <memory>
+#include <optional>
 
 using namespace clang;
 using namespace ento;
@@ -139,7 +140,7 @@ bool ExplodedGraph::shouldCollect(const ExplodedNode *node) {
 
   // Condition 10.
   const ProgramPoint SuccLoc = succ->getLocation();
-  if (Optional<StmtPoint> SP = SuccLoc.getAs<StmtPoint>())
+  if (std::optional<StmtPoint> SP = SuccLoc.getAs<StmtPoint>())
     if (CallEvent::isCallStmt(SP->getStmt()))
       return false;
 

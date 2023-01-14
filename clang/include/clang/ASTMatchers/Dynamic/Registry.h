@@ -21,6 +21,7 @@
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/Optional.h"
 #include "llvm/ADT/StringRef.h"
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -94,8 +95,8 @@ public:
   /// Look up a matcher in the registry by name,
   ///
   /// \return An opaque value which may be used to refer to the matcher
-  /// constructor, or Optional<MatcherCtor>() if not found.
-  static llvm::Optional<MatcherCtor> lookupMatcherCtor(StringRef MatcherName);
+  /// constructor, or std::optional<MatcherCtor>() if not found.
+  static std::optional<MatcherCtor> lookupMatcherCtor(StringRef MatcherName);
 
   /// Compute the list of completion types for \p Context.
   ///

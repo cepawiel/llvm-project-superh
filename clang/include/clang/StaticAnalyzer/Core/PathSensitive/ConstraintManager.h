@@ -20,6 +20,7 @@
 #include "llvm/ADT/Optional.h"
 #include "llvm/Support/SaveAndRestore.h"
 #include <memory>
+#include <optional>
 #include <utility>
 
 namespace llvm {
@@ -36,7 +37,7 @@ class ExprEngine;
 class SymbolReaper;
 
 class ConditionTruthVal {
-  Optional<bool> Val;
+  std::optional<bool> Val;
 
 public:
   /// Construct a ConditionTruthVal indicating the constraint is constrained

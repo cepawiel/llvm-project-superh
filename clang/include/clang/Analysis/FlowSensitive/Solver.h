@@ -18,6 +18,7 @@
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/Optional.h"
+#include <optional>
 
 namespace clang {
 namespace dataflow {
@@ -64,7 +65,7 @@ public:
 
     /// Returns a truth assignment to boolean values that satisfies the queried
     /// boolean formula if available. Otherwise, an empty optional is returned.
-    llvm::Optional<llvm::DenseMap<AtomicBoolValue *, Assignment>>
+    std::optional<llvm::DenseMap<AtomicBoolValue *, Assignment>>
     getSolution() const {
       return Solution;
     }
@@ -72,11 +73,11 @@ public:
   private:
     Result(
         enum Status SATCheckStatus,
-        llvm::Optional<llvm::DenseMap<AtomicBoolValue *, Assignment>> Solution)
+        std::optional<llvm::DenseMap<AtomicBoolValue *, Assignment>> Solution)
         : SATCheckStatus(SATCheckStatus), Solution(std::move(Solution)) {}
 
     Status SATCheckStatus;
-    llvm::Optional<llvm::DenseMap<AtomicBoolValue *, Assignment>> Solution;
+    std::optional<llvm::DenseMap<AtomicBoolValue *, Assignment>> Solution;
   };
 
   virtual ~Solver() = default;
