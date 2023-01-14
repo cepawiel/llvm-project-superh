@@ -351,9 +351,6 @@ Bug Fixes
 
 Improvements to Clang's diagnostics
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-- Clang now supports implicit conversion warnings (``-Wsign-conversion``,
-  ``Wshorten-64-to-32``, etc) for compound assignment operators (like +=, -=, <<=, >>= etc) 
-  with integral operands.
 - Clang will now check compile-time determinable string literals as format strings.
   Fixes `Issue 55805: <https://github.com/llvm/llvm-project/issues/55805>`_.
 - ``-Wformat`` now recognizes ``%b`` for the ``printf``/``scanf`` family of
@@ -912,6 +909,7 @@ clang-format
 - Add ``BreakAfterAttributes`` option for breaking after a group of C++11
   attributes before a function declaration/definition name.
 - Add ``InsertNewlineAtEOF`` option for inserting a newline at EOF if missing.
+- Add ``LineEnding`` option to deprecate ``DeriveLineEnding`` and ``UseCRLF``.
 
 clang-extdef-mapping
 --------------------

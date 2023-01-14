@@ -23,6 +23,7 @@
 #include "llvm/Support/Format.h"
 #include "llvm/Support/FormatVariadic.h"
 #include <numeric>
+#include <optional>
 
 #define DEBUG_TYPE "pdl-bytecode"
 
@@ -1605,7 +1606,7 @@ void ByteCodeExecutor::executeCreateOperation(PatternRewriter &rewriter,
   unsigned numResults = read();
   if (numResults == kInferTypesMarker) {
     InferTypeOpInterface::Concept *inferInterface =
-        state.name.getRegisteredInfo()->getInterface<InferTypeOpInterface>();
+        state.name.getInterface<InferTypeOpInterface>();
     assert(inferInterface &&
            "expected operation to provide InferTypeOpInterface");
 
