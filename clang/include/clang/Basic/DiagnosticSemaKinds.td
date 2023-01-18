@@ -1650,6 +1650,9 @@ def err_type_defined_in_condition : Error<
   "%0 cannot be defined in a condition">;
 def err_type_defined_in_enum : Error<
   "%0 cannot be defined in an enumeration">;
+def ext_type_defined_in_offsetof : Extension<
+  "defining a type within '%select{__builtin_offsetof|offsetof}0' is a Clang "
+  "extension">, InGroup<GNUOffsetofExtensions>;
 
 def note_pure_virtual_function : Note<
   "unimplemented pure virtual method %0 in %1">;
@@ -9360,6 +9363,9 @@ def err_non_first_default_compare_deletes : Error<
   "defaulting %select{this %sub{select_defaulted_comparison_kind}1|"
   "the corresponding implicit 'operator==' for this defaulted 'operator<=>'}0 "
   "would delete it after its first declaration">;
+def err_non_first_default_compare_in_class : Error<
+  "defaulting this %sub{select_defaulted_comparison_kind}0 "
+  "is not allowed because it was already declared outside the class">;
 def note_defaulted_comparison_union : Note<
   "defaulted %0 is implicitly deleted because "
   "%2 is a %select{union-like class|union}1 with variant members">;

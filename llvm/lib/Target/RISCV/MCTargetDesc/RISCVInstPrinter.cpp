@@ -70,7 +70,7 @@ void RISCVInstPrinter::printInst(const MCInst *MI, uint64_t Address,
   const MCInst *NewMI = MI;
   MCInst UncompressedMI;
   if (PrintAliases && !NoAliases)
-    Res = uncompressInst(UncompressedMI, *MI, MRI, STI);
+    Res = uncompressInst(UncompressedMI, *MI, STI);
   if (Res)
     NewMI = const_cast<MCInst *>(&UncompressedMI);
   if (!PrintAliases || NoAliases || !printAliasInstr(NewMI, Address, STI, O))
@@ -78,8 +78,8 @@ void RISCVInstPrinter::printInst(const MCInst *MI, uint64_t Address,
   printAnnotation(O, Annot);
 }
 
-void RISCVInstPrinter::printRegName(raw_ostream &O, unsigned RegNo) const {
-  O << getRegisterName(RegNo);
+void RISCVInstPrinter::printRegName(raw_ostream &O, MCRegister Reg) const {
+  O << getRegisterName(Reg);
 }
 
 void RISCVInstPrinter::printOperand(const MCInst *MI, unsigned OpNo,
@@ -194,7 +194,7 @@ void RISCVInstPrinter::printVMaskReg(const MCInst *MI, unsigned OpNo,
   O << ".t";
 }
 
-const char *RISCVInstPrinter::getRegisterName(unsigned RegNo) {
-  return getRegisterName(RegNo, ArchRegNames ? RISCV::NoRegAltName
-                                             : RISCV::ABIRegAltName);
+const char *RISCVInstPrinter::getRegisterName(MCRegister Reg) {
+  return getRegisterName(Reg, ArchRegNames ? RISCV::NoRegAltName
+                                           : RISCV::ABIRegAltName);
 }
