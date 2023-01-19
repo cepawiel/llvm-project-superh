@@ -334,6 +334,7 @@ END-SCRIPT
 #include <__filesystem/u8path.h> // expected-error@*:* {{use of private header from outside its module: '__filesystem/u8path.h'}}
 #include <__format/buffer.h> // expected-error@*:* {{use of private header from outside its module: '__format/buffer.h'}}
 #include <__format/concepts.h> // expected-error@*:* {{use of private header from outside its module: '__format/concepts.h'}}
+#include <__format/container_adaptor.h> // expected-error@*:* {{use of private header from outside its module: '__format/container_adaptor.h'}}
 #include <__format/enable_insertable.h> // expected-error@*:* {{use of private header from outside its module: '__format/enable_insertable.h'}}
 #include <__format/escaped_output_table.h> // expected-error@*:* {{use of private header from outside its module: '__format/escaped_output_table.h'}}
 #include <__format/extended_grapheme_cluster_table.h> // expected-error@*:* {{use of private header from outside its module: '__format/extended_grapheme_cluster_table.h'}}
@@ -359,6 +360,7 @@ END-SCRIPT
 #include <__format/formatter_tuple.h> // expected-error@*:* {{use of private header from outside its module: '__format/formatter_tuple.h'}}
 #include <__format/parser_std_format_spec.h> // expected-error@*:* {{use of private header from outside its module: '__format/parser_std_format_spec.h'}}
 #include <__format/range_default_formatter.h> // expected-error@*:* {{use of private header from outside its module: '__format/range_default_formatter.h'}}
+#include <__format/range_formatter.h> // expected-error@*:* {{use of private header from outside its module: '__format/range_formatter.h'}}
 #include <__format/unicode.h> // expected-error@*:* {{use of private header from outside its module: '__format/unicode.h'}}
 #include <__functional/binary_function.h> // expected-error@*:* {{use of private header from outside its module: '__functional/binary_function.h'}}
 #include <__functional/binary_negate.h> // expected-error@*:* {{use of private header from outside its module: '__functional/binary_negate.h'}}

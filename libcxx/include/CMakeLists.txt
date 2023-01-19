@@ -302,6 +302,7 @@ set(files
   __filesystem/u8path.h
   __format/buffer.h
   __format/concepts.h
+  __format/container_adaptor.h
   __format/enable_insertable.h
   __format/escaped_output_table.h
   __format/extended_grapheme_cluster_table.h
@@ -327,6 +328,7 @@ set(files
   __format/formatter_tuple.h
   __format/parser_std_format_spec.h
   __format/range_default_formatter.h
+  __format/range_formatter.h
   __format/unicode.h
   __functional/binary_function.h
   __functional/binary_negate.h
