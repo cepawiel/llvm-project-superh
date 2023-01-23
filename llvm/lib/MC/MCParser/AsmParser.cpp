@@ -6048,7 +6048,7 @@ bool AsmParser::parseMSInlineAsm(
         InputDecls.push_back(OpDecl);
         InputDeclsAddressOf.push_back(Operand.needAddressOf());
         InputConstraints.push_back(Constraint.str());
-        if (Desc.OpInfo[i - 1].isBranchTarget())
+        if (Desc.operands()[i - 1].isBranchTarget())
           AsmStrRewrites.emplace_back(AOK_CallInput, Start, SymName.size(), 0,
                                       Restricted);
         else
@@ -6058,9 +6058,7 @@ bool AsmParser::parseMSInlineAsm(
     }
 
     // Consider implicit defs to be clobbers.  Think of cpuid and push.
-    ArrayRef<MCPhysReg> ImpDefs(Desc.getImplicitDefs(),
-                                Desc.getNumImplicitDefs());
-    llvm::append_range(ClobberRegs, ImpDefs);
+    llvm::append_range(ClobberRegs, Desc.implicit_defs());
   }
 
   // Set the number of Outputs and Inputs.
