@@ -2265,7 +2265,9 @@ bool AANoSync::isAlignedBarrier(const CallBase &CB, bool ExecutedAligned) {
   case Intrinsic::nvvm_barrier0_popc:
     return true;
   case Intrinsic::amdgcn_s_barrier:
-    return ExecutedAligned;
+    if (ExecutedAligned)
+      return true;
+    break;
   default:
     break;
   }
@@ -4121,14 +4123,19 @@ struct AAIsDeadFloating : public AAIsDeadValueImpl {
     if (SI.isVolatile())
       return false;
 
+    // If we are collecting assumes to be deleted we are in the manifest stage.
+    // It's problematic to collect the potential copies again now so we use the
+    // cached ones.
     bool UsedAssumedInformation = false;
-    SmallSetVector<Value *, 4> PotentialCopies;
-    if (!AA::getPotentialCopiesOfStoredValue(A, SI, PotentialCopies, *this,
-                                             UsedAssumedInformation)) {
-      LLVM_DEBUG(
-          dbgs()
-          << "[AAIsDead] Could not determine potential copies of store!\n");
-      return false;
+    if (!AssumeOnlyInst) {
+      PotentialCopies.clear();
+      if (!AA::getPotentialCopiesOfStoredValue(A, SI, PotentialCopies, *this,
+                                               UsedAssumedInformation)) {
+        LLVM_DEBUG(
+            dbgs()
+            << "[AAIsDead] Could not determine potential copies of store!\n");
+        return false;
+      }
     }
     LLVM_DEBUG(dbgs() << "[AAIsDead] Store has " << PotentialCopies.size()
                       << " potential copies.\n");
@@ -4217,6 +4224,10 @@ struct AAIsDeadFloating : public AAIsDeadValueImpl {
   void trackStatistics() const override {
     STATS_DECLTRACK_FLOATING_ATTR(IsDead)
   }
+
+private:
+  // The potential copies of a dead store, used for deletion during manifest.
+  SmallSetVector<Value *, 4> PotentialCopies;
 };
 
 struct AAIsDeadArgument : public AAIsDeadFloating {
@@ -11324,7 +11335,7 @@ private:
   DenseSet<StringRef> getInitialAssumptions(const IRPosition &IRP) {
     const CallBase &CB = cast<CallBase>(IRP.getAssociatedValue());
     auto Assumptions = getAssumptions(CB);
-    if (Function *F = IRP.getAssociatedFunction())
+    if (const Function *F = CB.getCaller())
       set_union(Assumptions, getAssumptions(*F));
     if (Function *F = IRP.getAssociatedFunction())
       set_union(Assumptions, getAssumptions(*F));
