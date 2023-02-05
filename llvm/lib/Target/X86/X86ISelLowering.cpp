@@ -40299,6 +40299,13 @@ static SDValue combineX86ShufflesRecursively(
     }
   }
 
+  // Peek through any free extract_subvector nodes back to root size.
+  for (SDValue &Op : Ops)
+    while (Op.getOpcode() == ISD::EXTRACT_SUBVECTOR &&
+           (RootSizeInBits % Op.getOperand(0).getValueSizeInBits()) == 0 &&
+           isNullConstant(Op.getOperand(1)))
+      Op = Op.getOperand(0);
+
   // Remove unused/repeated shuffle source ops.
   resolveTargetShuffleInputsAndMask(Ops, Mask);
 
@@ -55582,6 +55589,16 @@ static SDValue combineINSERT_SUBVECTOR(SDNode *N, SelectionDAG &DAG,
   // Stop here if this is an i1 vector.
   if (IsI1Vector)
     return SDValue();
+
+  // Eliminate an intermediate vector widening:
+  // insert_subvector X, (insert_subvector undef, Y, 0), Idx -->
+  // insert_subvector X, Y, Idx
+  // TODO: This is a more general version of a DAGCombiner fold, can we move it
+  // there?
+  if (SubVec.getOpcode() == ISD::INSERT_SUBVECTOR &&
+      SubVec.getOperand(0).isUndef() && isNullConstant(SubVec.getOperand(2)))
+    return DAG.getNode(ISD::INSERT_SUBVECTOR, dl, OpVT, Vec,
+                       SubVec.getOperand(1), N->getOperand(2));
 
   // If this is an insert of an extract, combine to a shuffle. Don't do this
   // if the insert or extract can be represented with a subregister operation.

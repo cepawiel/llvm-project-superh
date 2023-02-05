@@ -837,6 +837,47 @@ Instruction *InstCombinerImpl::foldIntrinsicIsFPClass(IntrinsicInst &II) {
   uint32_t Mask = CMask->getZExtValue();
   const bool IsStrict = II.isStrictFP();
 
+  Value *FNegSrc;
+  if (match(Src0, m_FNeg(m_Value(FNegSrc)))) {
+    // is.fpclass (fneg x), mask -> is.fpclass x, (fneg mask)
+    unsigned NewMask = Mask & fcNan;
+    if (Mask & fcNegInf)
+      NewMask |= fcPosInf;
+    if (Mask & fcNegNormal)
+      NewMask |= fcPosNormal;
+    if (Mask & fcNegSubnormal)
+      NewMask |= fcPosSubnormal;
+    if (Mask & fcNegZero)
+      NewMask |= fcPosZero;
+    if (Mask & fcPosZero)
+      NewMask |= fcNegZero;
+    if (Mask & fcPosSubnormal)
+      NewMask |= fcNegSubnormal;
+    if (Mask & fcPosNormal)
+      NewMask |= fcNegNormal;
+    if (Mask & fcPosInf)
+      NewMask |= fcNegInf;
+
+    II.setArgOperand(1, ConstantInt::get(Src1->getType(), NewMask));
+    return replaceOperand(II, 0, FNegSrc);
+  }
+
+  Value *FAbsSrc;
+  if (match(Src0, m_FAbs(m_Value(FAbsSrc)))) {
+    unsigned NewMask = Mask & fcNan;
+    if (Mask & fcPosZero)
+      NewMask |= fcZero;
+    if (Mask & fcPosSubnormal)
+      NewMask |= fcSubnormal;
+    if (Mask & fcPosNormal)
+      NewMask |= fcNormal;
+    if (Mask & fcPosInf)
+      NewMask |= fcInf;
+
+    II.setArgOperand(1, ConstantInt::get(Src1->getType(), NewMask));
+    return replaceOperand(II, 0, FAbsSrc);
+  }
+
   if (Mask == fcNan && !IsStrict) {
     // Equivalent of isnan. Replace with standard fcmp if we don't care about FP
     // exceptions.
@@ -863,6 +904,18 @@ Instruction *InstCombinerImpl::foldIntrinsicIsFPClass(IntrinsicInst &II) {
   // fp_class (nnan x), ~(qnan|snan) -> true
   if (Mask == (~fcNan & fcAllFlags) &&
       isKnownNeverNaN(Src0, &getTargetLibraryInfo())) {
+    return replaceInstUsesWith(II, ConstantInt::get(II.getType(), true));
+  }
+
+  // fp_class (ninf x), ninf|pinf|other -> fp_class (ninf x), other
+  if ((Mask & fcInf) && isKnownNeverInfinity(Src0, &getTargetLibraryInfo())) {
+    II.setArgOperand(1, ConstantInt::get(Src1->getType(), Mask & ~fcInf));
+    return &II;
+  }
+
+  // fp_class (ninf x), ~(ninf|pinf) -> true
+  if (Mask == (~fcInf & fcAllFlags) &&
+      isKnownNeverInfinity(Src0, &getTargetLibraryInfo())) {
     return replaceInstUsesWith(II, ConstantInt::get(II.getType(), true));
   }
 
