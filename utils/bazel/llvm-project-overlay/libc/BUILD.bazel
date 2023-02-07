@@ -67,7 +67,7 @@ libc_support_library(
 
 libc_support_library(
     name = "__support_sanitizer",
-    hdrs = ["src/__support/sanitizer.h"],
+    hdrs = ["src/__support/macros/sanitizer.h"],
     deps = [
         ":__support_compiler_features",
         ":libc_root",
@@ -77,10 +77,11 @@ libc_support_library(
 libc_support_library(
     name = "__support_common",
     hdrs = [
-        "src/__support/macros/architectures.h",
         "src/__support/common.h",
-        "src/__support/macros/cpu_features.h",
         "src/__support/endian.h",
+        "src/__support/macros/architectures.h",
+        "src/__support/macros/attributes.h",
+        "src/__support/macros/cpu_features.h",
     ],
 )
 

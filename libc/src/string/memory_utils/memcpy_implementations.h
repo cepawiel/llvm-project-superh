@@ -24,7 +24,7 @@ namespace __llvm_libc {
 [[maybe_unused]] LIBC_INLINE void
 inline_memcpy_embedded_tiny(Ptr __restrict dst, CPtr __restrict src,
                             size_t count) {
-  LLVM_LIBC_LOOP_NOUNROLL
+  LIBC_LOOP_NOUNROLL
   for (size_t offset = 0; offset < count; ++offset)
     builtin::Memcpy<1>::block(dst + offset, src + offset);
 }
@@ -80,7 +80,7 @@ inline_memcpy_x86_maybe_interpose_repmovsb(Ptr __restrict dst,
   } else if constexpr (kRepMovsbThreshold == size_t(-1)) {
     return inline_memcpy_x86(dst, src, count);
   } else {
-    if (unlikely(count >= kRepMovsbThreshold))
+    if (LIBC_UNLIKELY(count >= kRepMovsbThreshold))
       return x86::Memcpy::repmovsb(dst, src, count);
     else
       return inline_memcpy_x86(dst, src, count);
