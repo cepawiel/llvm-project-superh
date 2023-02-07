@@ -62,7 +62,7 @@ cc_library(
 
 libc_support_library(
     name = "__support_compiler_features",
-    hdrs = ["src/__support/compiler_features.h"],
+    hdrs = ["src/__support/macros/compiler_features.h"],
 )
 
 libc_support_library(
@@ -77,9 +77,9 @@ libc_support_library(
 libc_support_library(
     name = "__support_common",
     hdrs = [
-        "src/__support/architectures.h",
+        "src/__support/macros/architectures.h",
         "src/__support/common.h",
-        "src/__support/cpu_features.h",
+        "src/__support/macros/cpu_features.h",
         "src/__support/endian.h",
     ],
 )
