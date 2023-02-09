@@ -222,7 +222,7 @@ void OneShotAnalysisState::gatherUndefinedTensorUses(Operation *op) {
 
       // If there is no preceding definition, the tensor contents are
       // undefined.
-      if (findDefinitions(opResult).empty())
+      if (findDefinitionsCached(opResult).empty())
         for (OpOperand &use : opResult.getUses())
           undefinedTensorUses.insert(&use);
     }
@@ -473,7 +473,8 @@ hasReadAfterWriteInterference(const DenseSet<OpOperand *> &usesRead,
     // In the above example, if uRead is the OpOperand of reading_op, the
     // definition is %0. Note that operations that create an alias but do not
     // bufferize to a memory write (such as ExtractSliceOp) are skipped.
-    SetVector<Value> definitions = state.findDefinitions(uRead->get());
+    const SetVector<Value> &definitions =
+        state.findDefinitionsCached(uRead->get());
     if (definitions.empty()) {
       // Fast path: No conflict if there are no definitions.
       LLVM_DEBUG(llvm::dbgs()
@@ -724,62 +725,42 @@ static void annotateNonWritableTensor(Value value) {
   }
 }
 
-/// Check the reverse SSA use-def chain (following aliasing OpOperands) for
-/// non-writable tensor values. Stop searching when an out-of-place bufferized
-/// OpOperand was found (or when the OpOperand was not bufferized yet).
-/// `currentOpOperand` is assumed to be in-place, even if that decision was not
-/// materialized in `aliasInfo` yet.
-static bool
-hasPrecedingAliasingNonWritableTensor(Value value, OpOperand *currentOpOperand,
-                                      const OneShotAnalysisState &state) {
-  SmallVector<Value> worklist;
-  worklist.push_back(value);
-  while (!worklist.empty()) {
-    Value nextVal = worklist.pop_back_val();
-    if (!state.isWritable(nextVal)) {
-      if (state.getOptions().printConflicts)
-        annotateNonWritableTensor(nextVal);
-      return true;
-    }
-
-    // If `nextVal` is not a BlockArgument: End of use-def chain reached.
-    auto opResult = nextVal.dyn_cast<OpResult>();
-    if (!opResult)
-      continue;
-
-    // Follow reverse SSA use-def chain.
-    AliasingOpOperandList aliasingOpOperands =
-        state.getAliasingOpOperands(opResult);
-    for (OpOperand *opOperand : aliasingOpOperands)
-      if (state.isInPlace(*opOperand) || currentOpOperand == opOperand)
-        worklist.push_back(opOperand->get());
-  }
-  return false;
-}
-
 /// Return true if bufferizing `operand` inplace would create a write to a
 /// non-writable buffer.
 static bool
 wouldCreateWriteToNonWritableBuffer(OpOperand &operand,
                                     OneShotAnalysisState &state,
                                     bool checkConsistencyOnly = false) {
-  // Collect writes of all aliases of OpOperand and OpResult.
-  DenseSet<OpOperand *> usesWrite;
-  getAliasingInplaceWrites(usesWrite, operand.get(), state);
-  for (OpResult result : state.getAliasingOpResults(operand)) {
-    getAliasingInplaceWrites(usesWrite, result, state);
-  }
-  if (!checkConsistencyOnly && state.bufferizesToMemoryWrite(operand))
-    usesWrite.insert(&operand);
+  bool foundWrite =
+      !checkConsistencyOnly && state.bufferizesToMemoryWrite(operand);
 
-  // Assuming that `operand` bufferizes in-place: For each write (to each
-  // alias), check if there is a non-writable tensor in the reverse SSA use-def
-  // chain.
-  for (OpOperand *uWrite : usesWrite) {
-    if (hasPrecedingAliasingNonWritableTensor(uWrite->get(), &operand, state)) {
-      LLVM_DEBUG(llvm::dbgs() << "=> NOT WRITABLE\n");
-      return true;
+  if (!foundWrite) {
+    // Collect writes of all aliases of OpOperand and OpResult.
+    DenseSet<OpOperand *> usesWrite;
+    getAliasingInplaceWrites(usesWrite, operand.get(), state);
+    for (OpResult result : state.getAliasingOpResults(operand))
+      getAliasingInplaceWrites(usesWrite, result, state);
+    foundWrite = !usesWrite.empty();
+  }
+
+  if (!foundWrite)
+    return false;
+
+  // Look for a read-only tensor among all aliases.
+  bool foundReadOnly = false;
+  auto checkReadOnly = [&](Value v) {
+    if (!state.isWritable(v)) {
+      foundReadOnly = true;
+      if (state.getOptions().printConflicts)
+        annotateNonWritableTensor(v);
     }
+  };
+  state.applyOnAliases(operand.get(), checkReadOnly);
+  for (OpResult result : state.getAliasingOpResults(operand))
+    state.applyOnAliases(result, checkReadOnly);
+  if (foundReadOnly) {
+    LLVM_DEBUG(llvm::dbgs() << "=> NOT WRITABLE\n");
+    return true;
   }
 
   return false;
@@ -788,6 +769,19 @@ wouldCreateWriteToNonWritableBuffer(OpOperand &operand,
 //===----------------------------------------------------------------------===//
 // Bufferization analyses.
 //===----------------------------------------------------------------------===//
+
+// Find the values that define the contents of the given value.
+const llvm::SetVector<Value> &
+OneShotAnalysisState::findDefinitionsCached(Value value) {
+  if (!cachedDefinitions.count(value)) {
+    cachedDefinitions[value] = findValueInReverseUseDefChain(
+        value, [&](Value v) { return this->bufferizesToMemoryWrite(v); },
+        /*followEquivalentOnly=*/false, /*alwaysIncludeLeaves=*/false);
+  }
+  return cachedDefinitions[value];
+}
+
+void OneShotAnalysisState::resetCache() { cachedDefinitions.clear(); }
 
 /// Determine if `operand` can be bufferized in-place.
 static LogicalResult
