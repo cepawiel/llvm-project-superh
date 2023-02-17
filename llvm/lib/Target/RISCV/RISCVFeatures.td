@@ -71,6 +71,20 @@ def HasStdExtZihintntl : Predicate<"Subtarget->hasStdExtZihintntl()">,
                                     AssemblerPredicate<(all_of FeatureStdExtZihintntl),
                                     "'Zihintntl' (Non-Temporal Locality Hints)">;
 
+def FeatureStdExtZicsr
+    : SubtargetFeature<"zicsr", "HasStdExtZicsr", "true",
+                       "'zicsr' (CSRs)">;
+def HasStdExtZicsr : Predicate<"Subtarget->hasStdExtZicsr()">,
+                                AssemblerPredicate<(all_of FeatureStdExtZicsr),
+                                "'Zicsr' (CSRs)">;
+
+def FeatureStdExtZifencei
+    : SubtargetFeature<"zifencei", "HasStdExtZifencei", "true",
+                       "'zifencei' (fence.i)">;
+def HasStdExtZifencei : Predicate<"Subtarget->hasStdExtZifencei()">,
+                                   AssemblerPredicate<(all_of FeatureStdExtZifencei),
+                                   "'Zifencei' (fence.i)">;
+
 def FeatureStdExtZfhmin
     : SubtargetFeature<"zfhmin", "HasStdExtZfhmin", "true",
                        "'Zfhmin' (Half-Precision Floating-Point Minimal)",
@@ -131,14 +145,6 @@ def HasStdExtZhinxOrZhinxmin
                                    "'Zhinx' (Half Float in Integer) or "
                                    "'Zhinxmin' (Half Float in Integer Minimal)">;
 
-def FeatureStdExtZfa
-    : SubtargetFeature<"experimental-zfa", "HasStdExtZfa", "true",
-                       "'Zfa' (Additional Floating-Point)",
-                       [FeatureStdExtF]>;
-def HasStdExtZfa : Predicate<"Subtarget->hasStdExtZfa()">,
-                             AssemblerPredicate<(all_of FeatureStdExtZfa),
-                             "'Zfa' (Additional Floating-Point)">;
-                             
 def FeatureStdExtC
     : SubtargetFeature<"c", "HasStdExtC", "true",
                        "'C' (Compressed Instructions)">;
