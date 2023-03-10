@@ -8370,7 +8370,9 @@ BoUpSLP::isGatherShuffledEntry(const TreeEntry *TE, ArrayRef<Value *> VL,
            "Expected only single user of the gather node.");
     Instruction &EntryUserInst =
         getLastInstructionInBundle(EntryPtr->UserTreeIndices.front().UserTE);
-    if (&UserInst == &EntryUserInst) {
+    PHINode *EntryPHI = dyn_cast<PHINode>(
+        EntryPtr->UserTreeIndices.front().UserTE->getMainOp());
+    if (&UserInst == &EntryUserInst && !EntryPHI) {
       // If 2 gathers are operands of the same entry, compare operands indices,
       // use the earlier one as the base.
       if (TE->UserTreeIndices.front().UserTE ==
@@ -8381,7 +8383,6 @@ BoUpSLP::isGatherShuffledEntry(const TreeEntry *TE, ArrayRef<Value *> VL,
     }
     // Check if the user node of the TE comes after user node of EntryPtr,
     // otherwise EntryPtr depends on TE.
-    auto *EntryPHI = dyn_cast<PHINode>(&EntryUserInst);
     auto *EntryI =
         EntryPHI
             ? EntryPHI
@@ -10227,6 +10228,7 @@ Value *BoUpSLP::vectorizeTree(ExtraValueToDebugLocsMap &ExternallyUsedValues,
   // Run through the list of postponed gathers and emit them, replacing the temp
   // emitted allocas with actual vector instructions.
   ArrayRef<const TreeEntry *> PostponedNodes = PostponedGathers.getArrayRef();
+  DenseMap<Value *, SmallVector<TreeEntry *>> PostponedValues;
   for (const TreeEntry *E : PostponedNodes) {
     auto *TE = const_cast<TreeEntry *>(E);
     if (auto *VecTE = getTreeEntry(TE->Scalars.front()))
@@ -10243,6 +10245,14 @@ Value *BoUpSLP::vectorizeTree(ExtraValueToDebugLocsMap &ExternallyUsedValues,
     Builder.SetCurrentDebugLocation(UserI->getDebugLoc());
     Value *Vec = vectorizeTree(TE);
     PrevVec->replaceAllUsesWith(Vec);
+    PostponedValues.try_emplace(Vec).first->second.push_back(TE);
+    // Replace the stub vector node, if it was used before for one of the
+    // buildvector nodes already.
+    auto It = PostponedValues.find(PrevVec);
+    if (It != PostponedValues.end()) {
+      for (TreeEntry *VTE : It->getSecond())
+        VTE->VectorizedValue = Vec;
+    }
     eraseInstruction(PrevVec);
   }
 
