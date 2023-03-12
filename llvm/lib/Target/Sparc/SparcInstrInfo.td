@@ -224,6 +224,8 @@ def SDTSPcmpfcc :
 SDTypeProfile<0, 2, [SDTCisFP<0>, SDTCisSameAs<0, 1>]>;
 def SDTSPbrcc :
 SDTypeProfile<0, 2, [SDTCisVT<0, OtherVT>, SDTCisVT<1, i32>]>;
+def SDTSPbrreg :
+SDTypeProfile<0, 3, [SDTCisVT<0, OtherVT>, SDTCisVT<1, i32>, SDTCisVT<2, i64>]>;
 def SDTSPselectcc :
 SDTypeProfile<1, 3, [SDTCisSameAs<0, 1>, SDTCisSameAs<1, 2>, SDTCisVT<3, i32>]>;
 def SDTSPselectreg :
@@ -253,6 +255,7 @@ def SPbpicc : SDNode<"SPISD::BPICC", SDTSPbrcc, [SDNPHasChain, SDNPInGlue]>;
 def SPbpxcc : SDNode<"SPISD::BPXCC", SDTSPbrcc, [SDNPHasChain, SDNPInGlue]>;
 def SPbrfcc : SDNode<"SPISD::BRFCC", SDTSPbrcc, [SDNPHasChain, SDNPInGlue]>;
 def SPbrfccv9 : SDNode<"SPISD::BRFCC_V9", SDTSPbrcc, [SDNPHasChain, SDNPInGlue]>;
+def SPbrreg : SDNode<"SPISD::BR_REG", SDTSPbrreg, [SDNPHasChain, SDNPInGlue]>;
 
 def SPhi    : SDNode<"SPISD::Hi", SDTIntUnaryOp>;
 def SPlo    : SDNode<"SPISD::Lo", SDTIntUnaryOp>;
@@ -850,15 +853,8 @@ class BranchPredictAlways<dag ins, string asmstr, list<dag> pattern>
   : F2_3<0b001, 0, 1, (outs), ins, asmstr, pattern>;
 }
 
-let cond = 8 in {
-  // If we're compiling for v9, prefer BPA rather than BA
-  // TODO: Disallow BA emission when FeatureV8Deprecated isn't enabled
-  let Predicates = [HasV9], cc = 0b00 in
-    def BPA : BranchPredictAlways<(ins bprtarget:$imm19),
-      "ba %icc, $imm19", [(br bb:$imm19)]>;
-
+let cond = 8 in
   def BA : BranchAlways<(ins brtarget:$imm22), "ba $imm22", [(br bb:$imm22)]>;
-}
 
 let isBranch = 1, isTerminator = 1, hasDelaySlot = 1 in {
 
