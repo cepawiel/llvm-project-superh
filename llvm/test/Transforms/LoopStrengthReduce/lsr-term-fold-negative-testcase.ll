@@ -106,15 +106,14 @@ define void @NonAddRecIV(ptr %a) {
 ; CHECK-SAME: (ptr [[A:%.*]]) {
 ; CHECK-NEXT:  entry:
 ; CHECK-NEXT:    [[UGLYGEP:%.*]] = getelementptr i8, ptr [[A]], i32 84
+; CHECK-NEXT:    [[SCEVGEP:%.*]] = getelementptr i8, ptr [[A]], i64 148
 ; CHECK-NEXT:    br label [[FOR_BODY:%.*]]
 ; CHECK:       for.body:
 ; CHECK-NEXT:    [[LSR_IV1:%.*]] = phi ptr [ [[UGLYGEP2:%.*]], [[FOR_BODY]] ], [ [[UGLYGEP]], [[ENTRY:%.*]] ]
-; CHECK-NEXT:    [[LSR_IV:%.*]] = phi i32 [ [[LSR_IV_NEXT:%.*]], [[FOR_BODY]] ], [ 1, [[ENTRY]] ]
 ; CHECK-NEXT:    store i32 1, ptr [[LSR_IV1]], align 4
-; CHECK-NEXT:    [[LSR_IV_NEXT]] = mul nsw i32 [[LSR_IV]], 2
 ; CHECK-NEXT:    [[UGLYGEP2]] = getelementptr i8, ptr [[LSR_IV1]], i64 4
-; CHECK-NEXT:    [[EXITCOND_NOT:%.*]] = icmp eq i32 [[LSR_IV_NEXT]], 65536
-; CHECK-NEXT:    br i1 [[EXITCOND_NOT]], label [[FOR_END:%.*]], label [[FOR_BODY]]
+; CHECK-NEXT:    [[LSR_FOLD_TERM_COND_REPLACED_TERM_COND:%.*]] = icmp eq ptr [[UGLYGEP2]], [[SCEVGEP]]
+; CHECK-NEXT:    br i1 [[LSR_FOLD_TERM_COND_REPLACED_TERM_COND]], label [[FOR_END:%.*]], label [[FOR_BODY]]
 ; CHECK:       for.end:
 ; CHECK-NEXT:    ret void
 ;
@@ -176,20 +175,21 @@ for.end:                                          ; preds = %for.end
   ret void
 }
 
-define void @NonIcmpEqNe(ptr %a) {
-; CHECK-LABEL: define void @NonIcmpEqNe
+define void @NonIcmp(ptr %a) {
+; CHECK-LABEL: define void @NonIcmp
 ; CHECK-SAME: (ptr [[A:%.*]]) {
 ; CHECK-NEXT:  entry:
 ; CHECK-NEXT:    [[UGLYGEP:%.*]] = getelementptr i8, ptr [[A]], i64 84
 ; CHECK-NEXT:    br label [[FOR_BODY:%.*]]
 ; CHECK:       for.body:
-; CHECK-NEXT:    [[LSR_IV1:%.*]] = phi ptr [ [[UGLYGEP2:%.*]], [[FOR_BODY]] ], [ [[UGLYGEP]], [[ENTRY:%.*]] ]
-; CHECK-NEXT:    [[LSR_IV:%.*]] = phi i64 [ [[LSR_IV_NEXT:%.*]], [[FOR_BODY]] ], [ 379, [[ENTRY]] ]
+; CHECK-NEXT:    [[LSR_IV2:%.*]] = phi i64 [ [[LSR_IV_NEXT3:%.*]], [[FOR_BODY]] ], [ 378, [[ENTRY:%.*]] ]
+; CHECK-NEXT:    [[LSR_IV1:%.*]] = phi ptr [ [[UGLYGEP2:%.*]], [[FOR_BODY]] ], [ [[UGLYGEP]], [[ENTRY]] ]
 ; CHECK-NEXT:    store i32 1, ptr [[LSR_IV1]], align 4
-; CHECK-NEXT:    [[LSR_IV_NEXT]] = add nsw i64 [[LSR_IV]], -1
 ; CHECK-NEXT:    [[UGLYGEP2]] = getelementptr i8, ptr [[LSR_IV1]], i64 4
-; CHECK-NEXT:    [[EXITCOND_NOT:%.*]] = icmp sle i64 [[LSR_IV_NEXT]], 0
-; CHECK-NEXT:    br i1 [[EXITCOND_NOT]], label [[FOR_END:%.*]], label [[FOR_BODY]]
+; CHECK-NEXT:    [[EXITCOND_NOT:%.*]] = icmp sle i64 [[LSR_IV2]], 0
+; CHECK-NEXT:    [[FIND_COND:%.*]] = and i1 [[EXITCOND_NOT]], true
+; CHECK-NEXT:    [[LSR_IV_NEXT3]] = add nsw i64 [[LSR_IV2]], -1
+; CHECK-NEXT:    br i1 [[FIND_COND]], label [[FOR_END:%.*]], label [[FOR_BODY]]
 ; CHECK:       for.end:
 ; CHECK-NEXT:    ret void
 ;
@@ -204,12 +204,16 @@ for.body:                                         ; preds = %for.body, %entry
   %lsr.iv.next = add nsw i64 %lsr.iv, -1
   %uglygep2 = getelementptr i8, ptr %lsr.iv1, i64 4
   %exitcond.not = icmp sle i64 %lsr.iv.next, 0
-  br i1 %exitcond.not, label %for.end, label %for.body
+  %find.cond = and i1 %exitcond.not, 1
+  br i1 %find.cond, label %for.end, label %for.body
 
 for.end:                                          ; preds = %for.body
   ret void
 }
 
+; After LSR, there are three IVs in this loop.  As a result, we have two
+; alternate IVs to chose from.  At the moment, we chose the last, but this
+; is somewhat arbitrary.
 define void @TermCondMoreThanOneUse(ptr %a) {
 ; CHECK-LABEL: define void @TermCondMoreThanOneUse
 ; CHECK-SAME: (ptr [[A:%.*]]) {
