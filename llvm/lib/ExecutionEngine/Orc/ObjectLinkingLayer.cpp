@@ -40,10 +40,19 @@ bool hasInitializerSection(jitlink::LinkGraph &G) {
   return false;
 }
 
-JITTargetAddress getJITSymbolPtrForSymbol(Symbol &Sym) {
+JITTargetAddress getJITSymbolPtrForSymbol(Symbol &Sym, const Triple &TT) {
   uint64_t CallableAddr = Sym.getAddress().getValue();
-  if (Sym.isCallable() && Sym.hasTargetFlags(aarch32::ThumbSymbol))
-    CallableAddr |= 0x01; // thumb bit
+  switch (TT.getArch()) {
+  case Triple::arm:
+  case Triple::armeb:
+  case Triple::thumb:
+  case Triple::thumbeb:
+    if (Sym.hasTargetFlags(aarch32::ThumbSymbol) && Sym.isCallable())
+      CallableAddr |= 0x01; // LSB is thumb bit
+    break;
+  default:
+    break;
+  }
   return CallableAddr;
 }
 
@@ -223,7 +232,7 @@ public:
     for (auto *Sym : G.defined_symbols())
       if (Sym->hasName() && Sym->getScope() != Scope::Local) {
         auto InternedName = ES.intern(Sym->getName());
-        auto Ptr = getJITSymbolPtrForSymbol(*Sym);
+        auto Ptr = getJITSymbolPtrForSymbol(*Sym, G.getTargetTriple());
         auto Flags = getJITSymbolFlagsForSymbol(*Sym);
         InternedResult[InternedName] = JITEvaluatedSymbol(Ptr, Flags);
         if (AutoClaim && !MR->getSymbols().count(InternedName)) {
@@ -236,7 +245,7 @@ public:
     for (auto *Sym : G.absolute_symbols())
       if (Sym->hasName() && Sym->getScope() != Scope::Local) {
         auto InternedName = ES.intern(Sym->getName());
-        auto Ptr = getJITSymbolPtrForSymbol(*Sym);
+        auto Ptr = getJITSymbolPtrForSymbol(*Sym, G.getTargetTriple());
         auto Flags = getJITSymbolFlagsForSymbol(*Sym);
         InternedResult[InternedName] = JITEvaluatedSymbol(Ptr, Flags);
         if (AutoClaim && !MR->getSymbols().count(InternedName)) {
