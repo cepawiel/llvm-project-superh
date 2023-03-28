@@ -243,6 +243,16 @@ RISCVTTIImpl::getRegisterBitWidth(TargetTransformInfo::RegisterKind K) const {
   llvm_unreachable("Unsupported register kind");
 }
 
+InstructionCost
+RISCVTTIImpl::getConstantPoolLoadCost(Type *Ty,  TTI::TargetCostKind CostKind) {
+  // Add a cost of address generation + the cost of the load. The address
+  // is expected to be a PC relative offset to a constant pool entry
+  // using auipc/addi.
+  return 2 + getMemoryOpCost(Instruction::Load, Ty, DL.getABITypeAlign(Ty),
+                             /*AddressSpace=*/0, CostKind);
+}
+
+
 InstructionCost RISCVTTIImpl::getShuffleCost(TTI::ShuffleKind Kind,
                                              VectorType *Tp, ArrayRef<int> Mask,
                                              TTI::TargetCostKind CostKind,
@@ -279,6 +289,17 @@ InstructionCost RISCVTTIImpl::getShuffleCost(TTI::ShuffleKind Kind,
             if (equal(DeinterleaveMask, Mask))
               return LT.first * getLMULCost(LT.second);
           }
+        }
+
+        // vrgather + cost of generating the mask constant.
+        // We model this for an unknown mask with a single vrgather.
+        if (LT.first == 1 &&
+            (LT.second.getScalarSizeInBits() != 8 ||
+             LT.second.getVectorNumElements() <= 256)) {
+          VectorType *IdxTy = VectorType::get(IntegerType::getInt8Ty(Tp->getContext()),
+                                              Tp->getElementCount());
+          InstructionCost IndexCost = getConstantPoolLoadCost(IdxTy, CostKind);
+          return IndexCost + getLMULCost(LT.second);
         }
       }
     }
@@ -1197,11 +1218,7 @@ InstructionCost RISCVTTIImpl::getStoreImmCost(Type *Ty,
     // with how we treat scalar constants themselves just above.
     return 1;
 
-  // Add a cost of address generation + the cost of the vector load. The
-  // address is expected to be a PC relative offset to a constant pool entry
-  // using auipc/addi.
-  return 2 + getMemoryOpCost(Instruction::Load, Ty, DL.getABITypeAlign(Ty),
-                             /*AddressSpace=*/0, CostKind);
+  return getConstantPoolLoadCost(Ty, CostKind);
 }
 
 
@@ -1434,11 +1451,7 @@ InstructionCost RISCVTTIImpl::getArithmeticInstrCost(
       // scalar constants in GPRs.
       return 0;
 
-    // Add a cost of address generation + the cost of the vector load. The
-    // address is expected to be a PC relative offset to a constant pool entry
-    // using auipc/addi.
-    return 2 + getMemoryOpCost(Instruction::Load, Ty, DL.getABITypeAlign(Ty),
-                               /*AddressSpace=*/0, CostKind);
+    return getConstantPoolLoadCost(Ty, CostKind);
   };
 
   // Add the cost of materializing any constant vectors required.
@@ -1580,7 +1593,7 @@ unsigned RISCVTTIImpl::getMaximumVF(unsigned ElemWidth, unsigned Opcode) const {
 
 bool RISCVTTIImpl::isLSRCostLess(const TargetTransformInfo::LSRCost &C1,
                                  const TargetTransformInfo::LSRCost &C2) {
-  // RISCV specific here are "instruction number 1st priority".
+  // RISC-V specific here are "instruction number 1st priority".
   return std::tie(C1.Insns, C1.NumRegs, C1.AddRecCost,
                   C1.NumIVMuls, C1.NumBaseAdds,
                   C1.ScaleCost, C1.ImmCost, C1.SetupCost) <

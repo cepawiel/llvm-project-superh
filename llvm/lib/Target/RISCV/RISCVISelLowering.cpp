@@ -1,4 +1,4 @@
-//===-- RISCVISelLowering.cpp - RISCV DAG Lowering Implementation  --------===//
+//===-- RISCVISelLowering.cpp - RISC-V DAG Lowering Implementation  -------===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -6,7 +6,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file defines the interfaces that RISCV uses to lower LLVM code into a
+// This file defines the interfaces that RISC-V uses to lower LLVM code into a
 // selection DAG.
 //
 //===----------------------------------------------------------------------===//
@@ -806,7 +806,7 @@ RISCVTargetLowering::RISCVTargetLowering(const TargetMachine &TM,
 
       setOperationAction(ISD::STRICT_FP_EXTEND, VT, Custom);
       setOperationAction({ISD::STRICT_FADD, ISD::STRICT_FSUB, ISD::STRICT_FMUL,
-                          ISD::STRICT_FDIV, ISD::STRICT_FSQRT},
+                          ISD::STRICT_FDIV, ISD::STRICT_FSQRT, ISD::STRICT_FMA},
                          VT, Legal);
     };
 
@@ -1024,7 +1024,7 @@ RISCVTargetLowering::RISCVTargetLowering(const TargetMachine &TM,
         setOperationAction(ISD::STRICT_FP_EXTEND, VT, Custom);
         setOperationAction({ISD::STRICT_FADD, ISD::STRICT_FSUB,
                             ISD::STRICT_FMUL, ISD::STRICT_FDIV,
-                            ISD::STRICT_FSQRT},
+                            ISD::STRICT_FSQRT, ISD::STRICT_FMA},
                            VT, Custom);
       }
 
@@ -2096,7 +2096,7 @@ bool RISCVTargetLowering::shouldExpandBuildVectorWithShuffles(
 
 static SDValue lowerFP_TO_INT_SAT(SDValue Op, SelectionDAG &DAG,
                                   const RISCVSubtarget &Subtarget) {
-  // RISCV FP-to-int conversions saturate to the destination register size, but
+  // RISC-V FP-to-int conversions saturate to the destination register size, but
   // don't produce 0 for nan. We can use a conversion instruction and fix the
   // nan case with a compare and a select.
   SDValue Src = Op.getOperand(0);
@@ -4506,6 +4506,8 @@ SDValue RISCVTargetLowering::LowerOperation(SDValue Op,
                              /*HasMergeOp*/ true);
   case ISD::STRICT_FSQRT:
     return lowerToScalableOp(Op, DAG, RISCVISD::STRICT_FSQRT_VL);
+  case ISD::STRICT_FMA:
+    return lowerToScalableOp(Op, DAG, RISCVISD::STRICT_VFMADD_VL);
   case ISD::MGATHER:
   case ISD::VP_GATHER:
     return lowerMaskedGather(Op, DAG);
@@ -8038,8 +8040,8 @@ SDValue RISCVTargetLowering::lowerGET_ROUNDING(SDValue Op,
   SDVTList VTs = DAG.getVTList(XLenVT, MVT::Other);
   SDValue RM = DAG.getNode(RISCVISD::READ_CSR, DL, VTs, Chain, SysRegNo);
 
-  // Encoding used for rounding mode in RISCV differs from that used in
-  // FLT_ROUNDS. To convert it the RISCV rounding mode is used as an index in a
+  // Encoding used for rounding mode in RISC-V differs from that used in
+  // FLT_ROUNDS. To convert it the RISC-V rounding mode is used as an index in a
   // table, which consists of a sequence of 4-bit fields, each representing
   // corresponding FLT_ROUNDS mode.
   static const int Table =
@@ -8068,10 +8070,10 @@ SDValue RISCVTargetLowering::lowerSET_ROUNDING(SDValue Op,
   SDValue SysRegNo = DAG.getTargetConstant(
       RISCVSysReg::lookupSysRegByName("FRM")->Encoding, DL, XLenVT);
 
-  // Encoding used for rounding mode in RISCV differs from that used in
+  // Encoding used for rounding mode in RISC-V differs from that used in
   // FLT_ROUNDS. To convert it the C rounding mode is used as an index in
   // a table, which consists of a sequence of 4-bit fields, each representing
-  // corresponding RISCV mode.
+  // corresponding RISC-V mode.
   static const unsigned Table =
       (RISCVFPRndMode::RNE << 4 * int(RoundingMode::NearestTiesToEven)) |
       (RISCVFPRndMode::RTZ << 4 * int(RoundingMode::TowardZero)) |
@@ -10346,7 +10348,7 @@ static SDValue performFP_TO_INT_SATCombine(SDNode *N,
   if (Opc == RISCVISD::FCVT_WU_RV64)
     FpToInt = DAG.getZeroExtendInReg(FpToInt, DL, MVT::i32);
 
-  // RISCV FP-to-int conversions saturate to the destination register size, but
+  // RISC-V FP-to-int conversions saturate to the destination register size, but
   // don't produce 0 for nan.
   SDValue ZeroInt = DAG.getConstant(0, DL, DstVT);
   return DAG.getSelectCC(DL, Src, Src, ZeroInt, FpToInt, ISD::CondCode::SETUO);
@@ -10386,6 +10388,10 @@ static unsigned negateFMAOpcode(unsigned Opcode, bool NegMul, bool NegAcc) {
     case RISCVISD::VFNMSUB_VL: Opcode = RISCVISD::VFMADD_VL;  break;
     case RISCVISD::VFNMADD_VL: Opcode = RISCVISD::VFMSUB_VL;  break;
     case RISCVISD::VFMSUB_VL:  Opcode = RISCVISD::VFNMADD_VL; break;
+    case RISCVISD::STRICT_VFMADD_VL:  Opcode = RISCVISD::STRICT_VFNMSUB_VL; break;
+    case RISCVISD::STRICT_VFNMSUB_VL: Opcode = RISCVISD::STRICT_VFMADD_VL;  break;
+    case RISCVISD::STRICT_VFNMADD_VL: Opcode = RISCVISD::STRICT_VFMSUB_VL;  break;
+    case RISCVISD::STRICT_VFMSUB_VL:  Opcode = RISCVISD::STRICT_VFNMADD_VL; break;
     }
     // clang-format on
   }
@@ -10399,6 +10405,10 @@ static unsigned negateFMAOpcode(unsigned Opcode, bool NegMul, bool NegAcc) {
     case RISCVISD::VFMSUB_VL:  Opcode = RISCVISD::VFMADD_VL;  break;
     case RISCVISD::VFNMADD_VL: Opcode = RISCVISD::VFNMSUB_VL; break;
     case RISCVISD::VFNMSUB_VL: Opcode = RISCVISD::VFNMADD_VL; break;
+    case RISCVISD::STRICT_VFMADD_VL:  Opcode = RISCVISD::STRICT_VFMSUB_VL;  break;
+    case RISCVISD::STRICT_VFMSUB_VL:  Opcode = RISCVISD::STRICT_VFMADD_VL;  break;
+    case RISCVISD::STRICT_VFNMADD_VL: Opcode = RISCVISD::STRICT_VFNMSUB_VL; break;
+    case RISCVISD::STRICT_VFNMSUB_VL: Opcode = RISCVISD::STRICT_VFNMADD_VL; break;
     }
     // clang-format on
   }
@@ -11056,7 +11066,7 @@ SDValue RISCVTargetLowering::PerformDAGCombine(SDNode *N,
     }
     EVT IndexVT = Index.getValueType();
     MVT XLenVT = Subtarget.getXLenVT();
-    // RISCV indexed loads only support the "unsigned unscaled" addressing
+    // RISC-V indexed loads only support the "unsigned unscaled" addressing
     // mode, so anything else must be manually legalized.
     bool NeedsIdxLegalization =
         (IsIndexSigned && IndexVT.getVectorElementType().bitsLT(XLenVT));
@@ -11146,13 +11156,19 @@ SDValue RISCVTargetLowering::PerformDAGCombine(SDNode *N,
   case RISCVISD::VFMADD_VL:
   case RISCVISD::VFNMADD_VL:
   case RISCVISD::VFMSUB_VL:
-  case RISCVISD::VFNMSUB_VL: {
+  case RISCVISD::VFNMSUB_VL:
+  case RISCVISD::STRICT_VFMADD_VL:
+  case RISCVISD::STRICT_VFNMADD_VL:
+  case RISCVISD::STRICT_VFMSUB_VL:
+  case RISCVISD::STRICT_VFNMSUB_VL: {
     // Fold FNEG_VL into FMA opcodes.
-    SDValue A = N->getOperand(0);
-    SDValue B = N->getOperand(1);
-    SDValue C = N->getOperand(2);
-    SDValue Mask = N->getOperand(3);
-    SDValue VL = N->getOperand(4);
+    // The first operand of strict-fp is chain.
+    unsigned Offset = N->isTargetStrictFPOpcode();
+    SDValue A = N->getOperand(0 + Offset);
+    SDValue B = N->getOperand(1 + Offset);
+    SDValue C = N->getOperand(2 + Offset);
+    SDValue Mask = N->getOperand(3 + Offset);
+    SDValue VL = N->getOperand(4 + Offset);
 
     auto invertIfNegative = [&Mask, &VL](SDValue &V) {
       if (V.getOpcode() == RISCVISD::FNEG_VL && V.getOperand(1) == Mask &&
@@ -11174,6 +11190,9 @@ SDValue RISCVTargetLowering::PerformDAGCombine(SDNode *N,
       return SDValue();
 
     unsigned NewOpcode = negateFMAOpcode(N->getOpcode(), NegA != NegB, NegC);
+    if (Offset > 0)
+      return DAG.getNode(NewOpcode, SDLoc(N), N->getVTList(),
+                         {N->getOperand(0), A, B, C, Mask, VL});
     return DAG.getNode(NewOpcode, SDLoc(N), N->getValueType(0), A, B, C, Mask,
                        VL);
   }
@@ -14102,6 +14121,10 @@ const char *RISCVTargetLowering::getTargetNodeName(unsigned Opcode) const {
   NODE_NAME_CASE(STRICT_FMUL_VL)
   NODE_NAME_CASE(STRICT_FDIV_VL)
   NODE_NAME_CASE(STRICT_FSQRT_VL)
+  NODE_NAME_CASE(STRICT_VFMADD_VL)
+  NODE_NAME_CASE(STRICT_VFNMADD_VL)
+  NODE_NAME_CASE(STRICT_VFMSUB_VL)
+  NODE_NAME_CASE(STRICT_VFNMSUB_VL)
   NODE_NAME_CASE(STRICT_FP_EXTEND_VL)
   NODE_NAME_CASE(VWMUL_VL)
   NODE_NAME_CASE(VWMULU_VL)
@@ -14169,8 +14192,8 @@ std::pair<unsigned, const TargetRegisterClass *>
 RISCVTargetLowering::getRegForInlineAsmConstraint(const TargetRegisterInfo *TRI,
                                                   StringRef Constraint,
                                                   MVT VT) const {
-  // First, see if this is a constraint that directly corresponds to a
-  // RISCV register class.
+  // First, see if this is a constraint that directly corresponds to a RISC-V
+  // register class.
   if (Constraint.size() == 1) {
     switch (Constraint[0]) {
     case 'r':

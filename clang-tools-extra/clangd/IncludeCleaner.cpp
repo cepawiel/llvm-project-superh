@@ -78,7 +78,6 @@ clangd::Range getDiagnosticRange(llvm::StringRef Code, unsigned HashOffset) {
   return Result;
 }
 
-
 bool isFilteredByConfig(const Config &Cfg, llvm::StringRef HeaderPath) {
   // Convert the path to Unix slashes and try to match against the filter.
   llvm::SmallString<64> NormalizedPath(HeaderPath);
@@ -134,27 +133,6 @@ static bool mayConsiderUnused(const Inclusion &Inc, ParsedAST &AST,
     return false;
   }
   return true;
-}
-
-std::vector<include_cleaner::SymbolReference>
-collectMacroReferences(ParsedAST &AST) {
-  const auto &SM = AST.getSourceManager();
-  //  FIXME: !!this is a hacky way to collect macro references.
-  std::vector<include_cleaner::SymbolReference> Macros;
-  auto &PP = AST.getPreprocessor();
-  for (const syntax::Token &Tok :
-       AST.getTokens().spelledTokens(SM.getMainFileID())) {
-    auto Macro = locateMacroAt(Tok, PP);
-    if (!Macro)
-      continue;
-    if (auto DefLoc = Macro->Info->getDefinitionLoc(); DefLoc.isValid())
-      Macros.push_back(
-          {Tok.location(),
-           include_cleaner::Macro{/*Name=*/PP.getIdentifierInfo(Tok.text(SM)),
-                                  DefLoc},
-           include_cleaner::RefType::Explicit});
-  }
-  return Macros;
 }
 
 llvm::StringRef getResolvedPath(const include_cleaner::Header &SymProvider) {
@@ -288,6 +266,28 @@ std::vector<Diag> generateUnusedIncludeDiagnostics(
 }
 } // namespace
 
+
+std::vector<include_cleaner::SymbolReference>
+collectMacroReferences(ParsedAST &AST) {
+  const auto &SM = AST.getSourceManager();
+  //  FIXME: !!this is a hacky way to collect macro references.
+  std::vector<include_cleaner::SymbolReference> Macros;
+  auto &PP = AST.getPreprocessor();
+  for (const syntax::Token &Tok :
+       AST.getTokens().spelledTokens(SM.getMainFileID())) {
+    auto Macro = locateMacroAt(Tok, PP);
+    if (!Macro)
+      continue;
+    if (auto DefLoc = Macro->Info->getDefinitionLoc(); DefLoc.isValid())
+      Macros.push_back(
+          {Tok.location(),
+           include_cleaner::Macro{/*Name=*/PP.getIdentifierInfo(Tok.text(SM)),
+                                  DefLoc},
+           include_cleaner::RefType::Explicit});
+  }
+  return Macros;
+}
+
 include_cleaner::Includes
 convertIncludes(const SourceManager &SM,
                 const llvm::ArrayRef<Inclusion> Includes) {
@@ -390,15 +390,17 @@ IncludeCleanerFindings computeIncludeCleanerFindings(ParsedAST &AST) {
             Ref.RT != include_cleaner::RefType::Explicit)
           return;
 
-        auto &Tokens = AST.getTokens();
-        auto SpelledForExpanded =
-            Tokens.spelledForExpanded(Tokens.expandedTokens(Ref.RefLocation));
-        if (!SpelledForExpanded)
-          return;
-
-        auto Range = syntax::Token::range(SM, SpelledForExpanded->front(),
-                                          SpelledForExpanded->back());
-        MissingIncludeDiagInfo DiagInfo{Ref.Target, Range, Providers};
+        // We actually always want to map usages to their spellings, but
+        // spelling locations can point into preamble section. Using these
+        // offsets could lead into crashes in presence of stale preambles. Hence
+        // we use "getFileLoc" instead to make sure it always points into main
+        // file.
+        // FIXME: Use presumed locations to map such usages back to patched
+        // locations safely.
+        auto Loc = SM.getFileLoc(Ref.RefLocation);
+        const auto *Token = AST.getTokens().spelledTokenAt(Loc);
+        MissingIncludeDiagInfo DiagInfo{Ref.Target, Token->range(SM),
+                                        Providers};
         MissingIncludes.push_back(std::move(DiagInfo));
       });
   std::vector<const Inclusion *> UnusedIncludes =
