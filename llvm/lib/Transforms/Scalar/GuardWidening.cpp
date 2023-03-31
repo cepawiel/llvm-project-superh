@@ -596,7 +596,7 @@ Value *GuardWideningImpl::freezeAndPush(Value *Orig, Instruction *InsertPt) {
   SmallSet<Value *, 16> Visited;
   SmallVector<Value *, 16> Worklist;
   SmallSet<Instruction *, 16> DropPoisonFlags;
-  SmallSet<Value *, 16> NeedFreeze;
+  SmallVector<Value *, 16> NeedFreeze;
   Worklist.push_back(Orig);
   while (!Worklist.empty()) {
     Value *V = Worklist.pop_back_val();
@@ -609,7 +609,7 @@ Value *GuardWideningImpl::freezeAndPush(Value *Orig, Instruction *InsertPt) {
     Instruction *I = dyn_cast<Instruction>(V);
     if (!I || canCreateUndefOrPoison(cast<Operator>(I),
                                      /*ConsiderFlagsAndMetadata*/ false)) {
-      NeedFreeze.insert(V);
+      NeedFreeze.push_back(V);
       continue;
     }
     // Check all operands. If for any of them we cannot insert Freeze,
@@ -617,7 +617,7 @@ Value *GuardWideningImpl::freezeAndPush(Value *Orig, Instruction *InsertPt) {
     if (any_of(I->operands(), [&](Value *Op) {
           return isa<Instruction>(Op) && !getFreezeInsertPt(Op, DT);
         })) {
-      NeedFreeze.insert(I);
+      NeedFreeze.push_back(I);
       continue;
     }
     DropPoisonFlags.insert(I);
