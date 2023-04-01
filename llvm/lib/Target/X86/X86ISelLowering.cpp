@@ -24264,7 +24264,7 @@ static SDValue combineVectorSizedSetCCEquality(EVT VT, SDValue X, SDValue Y,
   return SDValue();
 }
 
-/// Helper for matching OR(EXTRACTELT(X,0),OR(EXTRACTELT(X,1),...))
+/// Helper for matching BINOP(EXTRACTELT(X,0),BINOP(EXTRACTELT(X,1),...))
 /// style scalarized (associative) reduction patterns. Partial reductions
 /// are supported when the pointer SrcMask is non-null.
 /// TODO - move this to SelectionDAG?
@@ -24366,8 +24366,21 @@ static SDValue LowerVectorAllEqual(const SDLoc &DL, SDValue LHS, SDValue RHS,
   // For sub-128-bit vector, cast to (legal) integer and compare with zero.
   if (VT.getSizeInBits() < 128) {
     EVT IntVT = EVT::getIntegerVT(*DAG.getContext(), VT.getSizeInBits());
-    if (!DAG.getTargetLoweringInfo().isTypeLegal(IntVT))
-      return SDValue();
+    if (!DAG.getTargetLoweringInfo().isTypeLegal(IntVT)) {
+      if (IntVT != MVT::i64)
+        return SDValue();
+      auto SplitLHS = DAG.SplitScalar(DAG.getBitcast(IntVT, MaskBits(LHS)), DL,
+                                      MVT::i32, MVT::i32);
+      auto SplitRHS = DAG.SplitScalar(DAG.getBitcast(IntVT, MaskBits(RHS)), DL,
+                                      MVT::i32, MVT::i32);
+      SDValue Lo =
+          DAG.getNode(ISD::XOR, DL, MVT::i32, SplitLHS.first, SplitRHS.first);
+      SDValue Hi =
+          DAG.getNode(ISD::XOR, DL, MVT::i32, SplitLHS.second, SplitRHS.second);
+      return DAG.getNode(X86ISD::CMP, DL, MVT::i32,
+                         DAG.getNode(ISD::OR, DL, MVT::i32, Lo, Hi),
+                         DAG.getConstant(0, DL, MVT::i32));
+    }
     return DAG.getNode(X86ISD::CMP, DL, MVT::i32,
                        DAG.getBitcast(IntVT, MaskBits(LHS)),
                        DAG.getBitcast(IntVT, MaskBits(RHS)));
@@ -24383,15 +24396,25 @@ static SDValue LowerVectorAllEqual(const SDLoc &DL, SDValue LHS, SDValue RHS,
   // Split down to 128/256/512-bit vector.
   unsigned TestSize = UseKORTEST ? 512 : (Subtarget.hasAVX() ? 256 : 128);
   if (VT.getSizeInBits() > TestSize) {
-    // Convert to a ICMP_EQ(XOR(LHS,RHS),0) pattern.
-    SDValue V = DAG.getNode(ISD::XOR, DL, VT, LHS, RHS);
-    while (VT.getSizeInBits() > TestSize) {
-      auto Split = DAG.SplitVector(V, DL);
-      VT = Split.first.getValueType();
-      V = DAG.getNode(ISD::OR, DL, VT, Split.first, Split.second);
+    if (isAllOnesOrAllOnesSplat(RHS)) {
+      // If ICMP(LHS,-1) - reduce using AND splits.
+      while (VT.getSizeInBits() > TestSize) {
+        auto Split = DAG.SplitVector(LHS, DL);
+        VT = Split.first.getValueType();
+        LHS = DAG.getNode(ISD::AND, DL, VT, Split.first, Split.second);
+      }
+      RHS = DAG.getAllOnesConstant(DL, VT);
+    } else {
+      // Convert to a ICMP_EQ(XOR(LHS,RHS),0) pattern.
+      SDValue V = DAG.getNode(ISD::XOR, DL, VT, LHS, RHS);
+      while (VT.getSizeInBits() > TestSize) {
+        auto Split = DAG.SplitVector(V, DL);
+        VT = Split.first.getValueType();
+        V = DAG.getNode(ISD::OR, DL, VT, Split.first, Split.second);
+      }
+      LHS = V;
+      RHS = DAG.getConstant(0, DL, VT);
     }
-    LHS = V;
-    RHS = DAG.getConstant(0, DL, VT);
   }
 
   if (UseKORTEST && VT.is512BitVector()) {
@@ -24419,84 +24442,95 @@ static SDValue LowerVectorAllEqual(const SDLoc &DL, SDValue LHS, SDValue RHS,
                      DAG.getConstant(0, DL, MVT::i32));
 }
 
-static SDValue LowerVectorAllZero(const SDLoc &DL, SDValue V, ISD::CondCode CC,
-                                  const APInt &Mask,
-                                  const X86Subtarget &Subtarget,
-                                  SelectionDAG &DAG, X86::CondCode &X86CC) {
-  SDValue Z = DAG.getConstant(0, DL, V.getValueType());
-  return LowerVectorAllEqual(DL, V, Z, CC, Mask, Subtarget, DAG, X86CC);
-}
-
-// Check whether an OR'd reduction tree is PTEST-able, or if we can fallback to
-// CMP(MOVMSK(PCMPEQB(X,0))).
-static SDValue MatchVectorAllZeroTest(SDValue Op, ISD::CondCode CC,
-                                      const SDLoc &DL,
-                                      const X86Subtarget &Subtarget,
-                                      SelectionDAG &DAG, X86::CondCode &X86CC) {
+// Check whether an AND/OR'd reduction tree is PTEST-able, or if we can fallback
+// to CMP(MOVMSK(PCMPEQB(X,Y))).
+static SDValue MatchVectorAllEqualTest(SDValue LHS, SDValue RHS,
+                                       ISD::CondCode CC, const SDLoc &DL,
+                                       const X86Subtarget &Subtarget,
+                                       SelectionDAG &DAG,
+                                       X86::CondCode &X86CC) {
   assert((CC == ISD::SETEQ || CC == ISD::SETNE) && "Unsupported ISD::CondCode");
 
+  bool CmpNull = isNullConstant(RHS);
+  bool CmpAllOnes = isAllOnesConstant(RHS);
+  if (!CmpNull && !CmpAllOnes)
+    return SDValue();
+
+  SDValue Op = LHS;
   if (!Subtarget.hasSSE2() || !Op->hasOneUse())
     return SDValue();
 
   // Check whether we're masking/truncating an OR-reduction result, in which
   // case track the masked bits.
+  // TODO: Add CmpAllOnes support.
   APInt Mask = APInt::getAllOnes(Op.getScalarValueSizeInBits());
-  switch (Op.getOpcode()) {
-  case ISD::TRUNCATE: {
-    SDValue Src = Op.getOperand(0);
-    Mask = APInt::getLowBitsSet(Src.getScalarValueSizeInBits(),
-                                Op.getScalarValueSizeInBits());
-    Op = Src;
-    break;
-  }
-  case ISD::AND: {
-    if (auto *Cst = dyn_cast<ConstantSDNode>(Op.getOperand(1))) {
-      Mask = Cst->getAPIntValue();
-      Op = Op.getOperand(0);
+  if (CmpNull) {
+    switch (Op.getOpcode()) {
+    case ISD::TRUNCATE: {
+      SDValue Src = Op.getOperand(0);
+      Mask = APInt::getLowBitsSet(Src.getScalarValueSizeInBits(),
+                                  Op.getScalarValueSizeInBits());
+      Op = Src;
+      break;
     }
-    break;
-  }
+    case ISD::AND: {
+      if (auto *Cst = dyn_cast<ConstantSDNode>(Op.getOperand(1))) {
+        Mask = Cst->getAPIntValue();
+        Op = Op.getOperand(0);
+      }
+      break;
+    }
+    }
   }
 
+  ISD::NodeType LogicOp = CmpNull ? ISD::OR : ISD::AND;
+
+  // Match icmp(or(extract(X,0),extract(X,1)),0) anyof reduction patterns.
+  // Match icmp(and(extract(X,0),extract(X,1)),-1) allof reduction patterns.
   SmallVector<SDValue, 8> VecIns;
-  if (Op.getOpcode() == ISD::OR && matchScalarReduction(Op, ISD::OR, VecIns)) {
+  if (Op.getOpcode() == LogicOp && matchScalarReduction(Op, LogicOp, VecIns)) {
     EVT VT = VecIns[0].getValueType();
     assert(llvm::all_of(VecIns,
                         [VT](SDValue V) { return VT == V.getValueType(); }) &&
            "Reduction source vector mismatch");
 
-    // Quit if less than 128-bits or not splittable to 128/256-bit vector.
-    if (VT.getSizeInBits() < 128 ||
-        !llvm::has_single_bit<uint32_t>(VT.getSizeInBits()))
+    // Quit if not splittable to scalar/128/256/512-bit vector.
+    if (!llvm::has_single_bit<uint32_t>(VT.getSizeInBits()))
       return SDValue();
 
-    // If more than one full vector is evaluated, OR them first before PTEST.
+    // If more than one full vector is evaluated, AND/OR them first before
+    // PTEST.
     for (unsigned Slot = 0, e = VecIns.size(); e - Slot > 1;
          Slot += 2, e += 1) {
-      // Each iteration will OR 2 nodes and append the result until there is
-      // only 1 node left, i.e. the final OR'd value of all vectors.
+      // Each iteration will AND/OR 2 nodes and append the result until there is
+      // only 1 node left, i.e. the final value of all vectors.
       SDValue LHS = VecIns[Slot];
       SDValue RHS = VecIns[Slot + 1];
-      VecIns.push_back(DAG.getNode(ISD::OR, DL, VT, LHS, RHS));
+      VecIns.push_back(DAG.getNode(LogicOp, DL, VT, LHS, RHS));
     }
 
-    if (SDValue V = LowerVectorAllZero(DL, VecIns.back(), CC, Mask, Subtarget,
-                                       DAG, X86CC))
-      return V;
+    return LowerVectorAllEqual(DL, VecIns.back(),
+                               CmpNull ? DAG.getConstant(0, DL, VT)
+                                       : DAG.getAllOnesConstant(DL, VT),
+                               CC, Mask, Subtarget, DAG, X86CC);
   }
 
+  // Match icmp(reduce_or(X),0) anyof reduction patterns.
+  // Match icmp(reduce_and(X),-1) allof reduction patterns.
   if (Op.getOpcode() == ISD::EXTRACT_VECTOR_ELT) {
     ISD::NodeType BinOp;
     if (SDValue Match =
-            DAG.matchBinOpReduction(Op.getNode(), BinOp, {ISD::OR})) {
-      if (SDValue V =
-              LowerVectorAllZero(DL, Match, CC, Mask, Subtarget, DAG, X86CC))
-        return V;
+            DAG.matchBinOpReduction(Op.getNode(), BinOp, {LogicOp})) {
+      EVT MatchVT = Match.getValueType();
+      return LowerVectorAllEqual(DL, Match,
+                                 CmpNull ? DAG.getConstant(0, DL, MatchVT)
+                                         : DAG.getAllOnesConstant(DL, MatchVT),
+                                 CC, Mask, Subtarget, DAG, X86CC);
     }
   }
 
   // Match icmp(bitcast(icmp_ne(X,Y)),0) reduction patterns.
-  // TODO: Expand to icmp(bitcast(icmp_eq(X,Y)),-1) patterns.
+  // Match icmp(bitcast(icmp_eq(X,Y)),-1) reduction patterns.
   if (Mask.isAllOnes()) {
     assert(!Op.getValueType().isVector() &&
            "Illegal vector type for reduction pattern");
@@ -24505,7 +24539,7 @@ static SDValue MatchVectorAllZeroTest(SDValue Op, ISD::CondCode CC,
         Src.getValueType().isFixedLengthVector() &&
         Src.getValueType().getScalarType() == MVT::i1) {
       ISD::CondCode SrcCC = cast<CondCodeSDNode>(Src.getOperand(2))->get();
-      if (SrcCC == ISD::SETNE) {
+      if (SrcCC == (CmpNull ? ISD::SETNE : ISD::SETEQ)) {
         SDValue LHS = Src.getOperand(0);
         SDValue RHS = Src.getOperand(1);
         EVT LHSVT = LHS.getValueType();
@@ -25710,14 +25744,12 @@ SDValue X86TargetLowering::emitFlagsForSetcc(SDValue Op0, SDValue Op1,
       }
     }
 
-    // Try to use PTEST/PMOVMSKB for a tree ORs equality compared with 0.
-    // TODO: We could do AND tree with all 1s as well by using the C flag.
-    if (isNullConstant(Op1))
-      if (SDValue CmpZ = MatchVectorAllZeroTest(Op0, CC, dl, Subtarget, DAG,
-                                                X86CondCode)) {
-        X86CC = DAG.getTargetConstant(X86CondCode, dl, MVT::i8);
-        return CmpZ;
-      }
+    // Try to use PTEST/PMOVMSKB for a tree AND/ORs equality compared with -1/0.
+    if (SDValue CmpZ = MatchVectorAllEqualTest(Op0, Op1, CC, dl, Subtarget, DAG,
+                                               X86CondCode)) {
+      X86CC = DAG.getTargetConstant(X86CondCode, dl, MVT::i8);
+      return CmpZ;
+    }
 
     // Try to lower using KORTEST or KTEST.
     if (SDValue Test = EmitAVX512Test(Op0, Op1, CC, dl, DAG, Subtarget, X86CC))
@@ -54221,10 +54253,10 @@ static SDValue combineSetCC(SDNode *N, SelectionDAG &DAG,
                                                     Subtarget))
       return V;
 
-    if (VT == MVT::i1 && isNullConstant(RHS)) {
+    if (VT == MVT::i1) {
       X86::CondCode X86CC;
       if (SDValue V =
-              MatchVectorAllZeroTest(LHS, CC, DL, Subtarget, DAG, X86CC))
+              MatchVectorAllEqualTest(LHS, RHS, CC, DL, Subtarget, DAG, X86CC))
         return DAG.getNode(ISD::TRUNCATE, DL, VT, getSETCC(X86CC, V, DL, DAG));
     }
 
