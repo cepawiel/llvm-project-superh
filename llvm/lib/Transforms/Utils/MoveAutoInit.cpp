@@ -100,7 +100,7 @@ static BasicBlock *usersDominator(Instruction *I, DominatorTree &DT,
 
 static bool runMoveAutoInit(Function &F, DominatorTree &DT, MemorySSA &MSSA) {
   BasicBlock &EntryBB = F.getEntryBlock();
-  SmallVector<std::pair<Instruction *, Instruction *>> JobList;
+  SmallVector<std::pair<Instruction *, BasicBlock *>> JobList;
 
   //
   // Compute movable instructions.
@@ -109,7 +109,8 @@ static bool runMoveAutoInit(Function &F, DominatorTree &DT, MemorySSA &MSSA) {
     if (!hasAutoInitMetadata(I))
       continue;
 
-    assert(!I.isVolatile() && "auto init instructions cannot be volatile.");
+    if (I.isVolatile())
+      continue;
 
     BasicBlock *UsersDominator = usersDominator(&I, DT, MSSA);
     if (!UsersDominator)
@@ -166,20 +167,17 @@ static bool runMoveAutoInit(Function &F, DominatorTree &DT, MemorySSA &MSSA) {
       UsersDominator = DominatingPredecessor;
     }
 
-    // We finally found a place where I can be moved while not introducing extra
-    // execution, and guarded by at least one condition.
-    Instruction *UsersDominatorInsertionPt =
-        &*UsersDominator->getFirstInsertionPt();
-
     // CatchSwitchInst blocks can only have one instruction, so they are not
     // good candidates for insertion.
-    while (isa<CatchSwitchInst>(UsersDominatorInsertionPt)) {
+    while (isa<CatchSwitchInst>(UsersDominator->getFirstInsertionPt())) {
       for (BasicBlock *Pred : predecessors(UsersDominator))
         UsersDominator = DT.findNearestCommonDominator(UsersDominator, Pred);
-      UsersDominatorInsertionPt = &*UsersDominator->getFirstInsertionPt();
     }
 
-    JobList.emplace_back(&I, UsersDominatorInsertionPt);
+    // We finally found a place where I can be moved while not introducing extra
+    // execution, and guarded by at least one condition.
+    if (UsersDominator != &EntryBB)
+      JobList.emplace_back(&I, UsersDominator);
   }
 
   //
@@ -190,9 +188,12 @@ static bool runMoveAutoInit(Function &F, DominatorTree &DT, MemorySSA &MSSA) {
 
   MemorySSAUpdater MSSAU(&MSSA);
 
-  for (auto &Job : JobList) {
-    Job.first->moveBefore(Job.second);
-    MSSAU.moveToPlace(MSSA.getMemoryAccess(Job.first), Job.second->getParent(),
+  // Reverse insertion to respect relative order between instructions:
+  // if two instructions are moved from the same BB to the same BB, we insert
+  // the second one in the front, then the first on top of it.
+  for (auto &Job : reverse(JobList)) {
+    Job.first->moveBefore(&*Job.second->getFirstInsertionPt());
+    MSSAU.moveToPlace(MSSA.getMemoryAccess(Job.first), Job.first->getParent(),
                       MemorySSA::InsertionPlace::Beginning);
   }
 
