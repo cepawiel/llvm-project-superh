@@ -8045,6 +8045,12 @@ const SCEV *ScalarEvolution::getTripCountFromExitCount(const SCEV *ExitCount,
   if (!Extend)
     return getAddExpr(ExitCount, getOne(ExitCountType));
 
+  ConstantRange ExitCountRange =
+      getRangeRef(ExitCount, RangeSignHint::HINT_RANGE_UNSIGNED);
+  if (!ExitCountRange.contains(
+          APInt::getMaxValue(ExitCountRange.getBitWidth())))
+    return getAddExpr(ExitCount, getOne(ExitCountType));
+
   auto *WiderType = Type::getIntNTy(ExitCountType->getContext(),
                                     1 + ExitCountType->getScalarSizeInBits());
   return getAddExpr(getNoopOrZeroExtend(ExitCount, WiderType),
@@ -8227,24 +8233,27 @@ unsigned ScalarEvolution::getSmallConstantTripMultiple(const Loop *L,
     return 1;
 
   // Get the trip count
-  const SCEV *TCExpr = getTripCountFromExitCount(ExitCount);
+  const SCEV *TCExpr = getTripCountFromExitCount(applyLoopGuards(ExitCount, L));
+
+  // If a trip multiple is huge (>=2^32), the trip count is still divisible by
+  // the greatest power of 2 divisor less than 2^32.
+  auto GetSmallMultiple = [](unsigned TrailingZeros) {
+    return 1U << std::min((uint32_t)31, TrailingZeros);
+  };
 
   const SCEVConstant *TC = dyn_cast<SCEVConstant>(TCExpr);
   if (!TC)
     // Attempt to factor more general cases. Returns the greatest power of
-    // two divisor. If overflow happens, the trip count expression is still
-    // divisible by the greatest power of 2 divisor returned.
-    return 1U << std::min((uint32_t)31,
-                          GetMinTrailingZeros(applyLoopGuards(TCExpr, L)));
+    // two divisor.
+    return GetSmallMultiple(GetMinTrailingZeros(TCExpr));
 
   ConstantInt *Result = TC->getValue();
+  assert(Result && "SCEVConstant expected to have non-null ConstantInt");
+  assert(Result->getValue() != 0 && "trip count should never be zero");
 
-  // Guard against huge trip counts (this requires checking
-  // for zero to handle the case where the trip count == -1 and the
-  // addition wraps).
-  if (!Result || Result->getValue().getActiveBits() > 32 ||
-      Result->getValue().getActiveBits() == 0)
-    return 1;
+  // Guard against huge trip multiples.
+  if (Result->getValue().getActiveBits() > 32)
+    return GetSmallMultiple(Result->getValue().countTrailingZeros());
 
   return (unsigned)Result->getZExtValue();
 }
