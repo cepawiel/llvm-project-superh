@@ -5192,68 +5192,23 @@ X86TTIImpl::getArithmeticReductionCost(unsigned Opcode, VectorType *ValTy,
 
 InstructionCost X86TTIImpl::getMinMaxCost(Type *Ty, Type *CondTy,
                                           TTI::TargetCostKind CostKind,
-                                          bool IsUnsigned) {
+                                          bool IsUnsigned, FastMathFlags FMF) {
+  Intrinsic::ID Id;
   if (Ty->isIntOrIntVectorTy()) {
-    Intrinsic::ID Id = IsUnsigned ? Intrinsic::umin : Intrinsic::smin;
-    IntrinsicCostAttributes ICA(Id, Ty, {Ty, Ty});
-    return getIntrinsicInstrCost(ICA, CostKind);
+    Id = IsUnsigned ? Intrinsic::umin : Intrinsic::smin;
+  } else {
+    assert(Ty->isFPOrFPVectorTy() &&
+           "Expected float point or integer vector type.");
+    Id = Intrinsic::minnum;
   }
 
-  // TODO: Use getIntrinsicInstrCost once ISD::FMINNUM costs are improved.
-  assert(Ty->isFPOrFPVectorTy() &&
-         "Expected float point or integer vector type.");
-  std::pair<InstructionCost, MVT> LT = getTypeLegalizationCost(Ty);
-  MVT MTy = LT.second;
-  int ISD = ISD::FMINNUM;
-
-  static const CostTblEntry SSE1CostTbl[] = {
-      {ISD::FMINNUM, MVT::v4f32, 1},
-  };
-
-  static const CostTblEntry SSE2CostTbl[] = {
-      {ISD::FMINNUM, MVT::v2f64, 1},
-  };
-
-  static const CostTblEntry AVX1CostTbl[] = {
-      {ISD::FMINNUM, MVT::v8f32, 1},
-      {ISD::FMINNUM, MVT::v4f64, 1},
-  };
-
-  static const CostTblEntry AVX512CostTbl[] = {
-      {ISD::FMINNUM, MVT::v16f32, 1},
-      {ISD::FMINNUM, MVT::v8f64, 1},
-  };
-
-  // If we have a native MIN/MAX instruction for this type, use it.
-  if (ST->hasAVX512())
-    if (const auto *Entry = CostTableLookup(AVX512CostTbl, ISD, MTy))
-      return LT.first * Entry->Cost;
-
-  if (ST->hasAVX())
-    if (const auto *Entry = CostTableLookup(AVX1CostTbl, ISD, MTy))
-      return LT.first * Entry->Cost;
-
-  if (ST->hasSSE2())
-    if (const auto *Entry = CostTableLookup(SSE2CostTbl, ISD, MTy))
-      return LT.first * Entry->Cost;
-
-  if (ST->hasSSE1())
-    if (const auto *Entry = CostTableLookup(SSE1CostTbl, ISD, MTy))
-      return LT.first * Entry->Cost;
-
-  // Otherwise fall back to cmp+select.
-  unsigned CmpOpcode = Instruction::FCmp;
-  InstructionCost Result =
-      getCmpSelInstrCost(CmpOpcode, Ty, CondTy, CmpInst::BAD_ICMP_PREDICATE,
-                         CostKind) +
-      getCmpSelInstrCost(Instruction::Select, Ty, CondTy,
-                         CmpInst::BAD_ICMP_PREDICATE, CostKind);
-  return Result;
+  IntrinsicCostAttributes ICA(Id, Ty, {Ty, Ty}, FMF);
+  return getIntrinsicInstrCost(ICA, CostKind);
 }
 
 InstructionCost
 X86TTIImpl::getMinMaxReductionCost(VectorType *ValTy, VectorType *CondTy,
-                                   bool IsUnsigned,
+                                   bool IsUnsigned, FastMathFlags FMF,
                                    TTI::TargetCostKind CostKind) {
   std::pair<InstructionCost, MVT> LT = getTypeLegalizationCost(ValTy);
 
@@ -5343,7 +5298,7 @@ X86TTIImpl::getMinMaxReductionCost(VectorType *ValTy, VectorType *CondTy,
                               MTy.getVectorNumElements());
     auto *SubCondTy = FixedVectorType::get(CondTy->getElementType(),
                                            MTy.getVectorNumElements());
-    MinMaxCost = getMinMaxCost(Ty, SubCondTy, CostKind, IsUnsigned);
+    MinMaxCost = getMinMaxCost(Ty, SubCondTy, CostKind, IsUnsigned, FMF);
     MinMaxCost *= LT.first - 1;
     NumVecElts = MTy.getVectorNumElements();
   }
@@ -5370,7 +5325,8 @@ X86TTIImpl::getMinMaxReductionCost(VectorType *ValTy, VectorType *CondTy,
   // by type legalization.
   if (!isPowerOf2_32(ValVTy->getNumElements()) ||
       ScalarSize != MTy.getScalarSizeInBits())
-    return BaseT::getMinMaxReductionCost(ValTy, CondTy, IsUnsigned, CostKind);
+    return BaseT::getMinMaxReductionCost(ValTy, CondTy, IsUnsigned, FMF,
+                                         CostKind);
 
   // Now handle reduction with the legal type, taking into account size changes
   // at each level.
@@ -5416,7 +5372,7 @@ X86TTIImpl::getMinMaxReductionCost(VectorType *ValTy, VectorType *CondTy,
     // Add the arithmetic op for this level.
     auto *SubCondTy =
         FixedVectorType::get(CondTy->getElementType(), Ty->getNumElements());
-    MinMaxCost += getMinMaxCost(Ty, SubCondTy, CostKind, IsUnsigned);
+    MinMaxCost += getMinMaxCost(Ty, SubCondTy, CostKind, IsUnsigned, FMF);
   }
 
   // Add the final extract element to the cost.
