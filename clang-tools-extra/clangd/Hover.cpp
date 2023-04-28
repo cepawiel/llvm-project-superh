@@ -996,13 +996,15 @@ void maybeAddCalleeArgInfo(const SelectionTree::Node *N, HoverInfo &HI,
 
   HoverInfo::PassType PassType;
 
+  auto Parameters = resolveForwardingParameters(FD);
+
   // Find argument index for N.
-  for (unsigned I = 0; I < CE->getNumArgs() && I < FD->getNumParams(); ++I) {
+  for (unsigned I = 0; I < CE->getNumArgs() && I < Parameters.size(); ++I) {
     if (CE->getArg(I) != OuterNode.ASTNode.get<Expr>())
       continue;
 
     // Extract matching argument from function declaration.
-    if (const ParmVarDecl *PVD = FD->getParamDecl(I)) {
+    if (const ParmVarDecl *PVD = Parameters[I]) {
       HI.CalleeArgInfo.emplace(toHoverInfoParam(PVD, PP));
       if (N == &OuterNode)
         PassType.PassBy = getPassMode(PVD->getType());
@@ -1172,20 +1174,12 @@ void maybeAddUsedSymbols(ParsedAST &AST, HoverInfo &HI, const Inclusion &Inc) {
             UsedSymbols.contains(Ref.Target))
           return;
 
-        for (const include_cleaner::Header &H : Providers) {
-          auto MatchingIncludes = ConvertedMainFileIncludes.match(H);
-          // No match for this provider in the main file.
-          if (MatchingIncludes.empty())
-            continue;
+        auto Provider =
+            firstMatchedProvider(ConvertedMainFileIncludes, Providers);
+        if (!Provider || HoveredInclude.match(*Provider).empty())
+          return;
 
-          // Check if the hovered include matches this provider.
-          if (!HoveredInclude.match(H).empty())
-            UsedSymbols.insert(Ref.Target);
-
-          // Don't look for rest of the providers once we've found a match
-          // in the main file.
-          break;
-        }
+        UsedSymbols.insert(Ref.Target);
       });
 
   for (const auto &UsedSymbolDecl : UsedSymbols)

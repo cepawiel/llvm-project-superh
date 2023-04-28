@@ -4022,10 +4022,7 @@ bool SelectionDAG::isKnownToBeAPowerOfTwo(SDValue Val) const {
 
   // More could be done here, though the above checks are enough
   // to handle some common cases.
-
-  // Fall back to computeKnownBits to catch other known cases.
-  KnownBits Known = computeKnownBits(Val);
-  return (Known.countMaxPopulation() == 1) && (Known.countMinPopulation() == 1);
+  return false;
 }
 
 unsigned SelectionDAG::ComputeNumSignBits(SDValue Op, unsigned Depth) const {
@@ -7125,7 +7122,7 @@ static SDValue getMemcpyLoadsAndStores(SelectionDAG &DAG, const SDLoc &dl,
   AAMDNodes NewAAInfo = AAInfo;
   NewAAInfo.TBAA = NewAAInfo.TBAAStruct = nullptr;
 
-  const Value *SrcVal = SrcPtrInfo.V.dyn_cast<const Value *>();
+  const Value *SrcVal = dyn_cast_if_present<const Value *>(SrcPtrInfo.V);
   bool isConstant =
       AA && SrcVal &&
       AA->pointsToConstantMemory(MemoryLocation(SrcVal, Size, AAInfo));
@@ -7952,7 +7949,7 @@ SDValue SelectionDAG::getMemIntrinsicNode(unsigned Opcode, const SDLoc &dl,
   assert((Opcode == ISD::INTRINSIC_VOID ||
           Opcode == ISD::INTRINSIC_W_CHAIN ||
           Opcode == ISD::PREFETCH ||
-          ((int)Opcode <= std::numeric_limits<int>::max() &&
+          (Opcode <= (unsigned)std::numeric_limits<int>::max() &&
            (int)Opcode >= ISD::FIRST_TARGET_MEMORY_OPCODE)) &&
          "Opcode is not a memory-accessing opcode!");
 

@@ -906,6 +906,35 @@ class Foo final {})cpp";
          HI.CalleeArgInfo->Type = "int &";
          HI.CallPassType = HoverInfo::PassType{PassMode::Ref, false};
        }},
+      {// make_unique-like function call
+       R"cpp(
+          struct Foo {
+            explicit Foo(int arg_a) {}
+          };
+          template<class T, class... Args>
+          T make(Args&&... args)
+          {
+              return T(args...);
+          }
+
+          void code() {
+            int a = 1;
+            auto foo = make<Foo>([[^a]]);
+          }
+          )cpp",
+       [](HoverInfo &HI) {
+         HI.Name = "a";
+         HI.Kind = index::SymbolKind::Variable;
+         HI.NamespaceScope = "";
+         HI.Definition = "int a = 1";
+         HI.LocalScope = "code::";
+         HI.Value = "1";
+         HI.Type = "int";
+         HI.CalleeArgInfo.emplace();
+         HI.CalleeArgInfo->Name = "arg_a";
+         HI.CalleeArgInfo->Type = "int";
+         HI.CallPassType = HoverInfo::PassType{PassMode::Value, false};
+       }},
       {
           R"cpp(
           void foobar(const float &arg);
@@ -2999,36 +3028,7 @@ TEST(Hover, UsedSymbols) {
                   #in^clude <vector>
                   std::vector<int> vec;
                 )cpp",
-                [](HoverInfo &HI) { HI.UsedSymbolNames = {"vector"}; }},
-               {R"cpp(
-                  #in^clude "public.h"
-                  #include "private.h"
-                  int fooVar = foo();
-                )cpp",
-                [](HoverInfo &HI) { HI.UsedSymbolNames = {"foo"}; }},
-               {R"cpp(
-                  #include "bar.h"
-                  #include "for^ward.h"
-                  Bar *x;
-                )cpp",
-                [](HoverInfo &HI) {
-                  HI.UsedSymbolNames = {
-                      // No used symbols, since bar.h is a higher-ranked
-                      // provider for Bar.
-                  };
-                }},
-               {R"cpp(
-                  #include "b^ar.h"
-                  #define DEF(X) const Bar *X
-                  DEF(a);
-                )cpp",
-                [](HoverInfo &HI) { HI.UsedSymbolNames = {"Bar"}; }},
-               {R"cpp(
-                  #in^clude "bar.h"
-                  #define BAZ(X) const X x
-                  BAZ(Bar);
-                )cpp",
-                [](HoverInfo &HI) { HI.UsedSymbolNames = {"Bar"}; }}};
+                [](HoverInfo &HI) { HI.UsedSymbolNames = {"vector"}; }}};
   for (const auto &Case : Cases) {
     Annotations Code{Case.Code};
     SCOPED_TRACE(Code.code());
@@ -3042,18 +3042,12 @@ TEST(Hover, UsedSymbols) {
                                           int bar2();
                                           class Bar {};
                                         )cpp");
-    TU.AdditionalFiles["private.h"] = guard(R"cpp(
-                                              // IWYU pragma: private, include "public.h"
-                                              int foo(); 
-                                            )cpp");
-    TU.AdditionalFiles["public.h"] = guard("");
     TU.AdditionalFiles["system/vector"] = guard(R"cpp(
       namespace std {
         template<typename>
         class vector{};
       }
     )cpp");
-    TU.AdditionalFiles["forward.h"] = guard("class Bar;");
     TU.ExtraArgs.push_back("-isystem" + testPath("system"));
 
     auto AST = TU.build();

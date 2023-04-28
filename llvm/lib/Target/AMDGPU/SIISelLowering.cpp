@@ -3396,7 +3396,9 @@ SDValue SITargetLowering::LowerCall(CallLoweringInfo &CLI,
   // actual call instruction.
   if (IsTailCall) {
     MFI.setHasTailCall();
-    return DAG.getNode(AMDGPUISD::TC_RETURN, DL, NodeTys, Ops);
+    unsigned OPC = CallConv == CallingConv::AMDGPU_Gfx ?
+                   AMDGPUISD::TC_RETURN_GFX : AMDGPUISD::TC_RETURN;
+    return DAG.getNode(OPC, DL, NodeTys, Ops);
   }
 
   // Returns a chain and a flag for retval copy to use.
@@ -6749,7 +6751,8 @@ SDValue SITargetLowering::lowerImage(SDValue Op,
       Opcode = AMDGPU::getMIMGOpcode(IntrOpcode, AMDGPU::MIMGEncGfx90a,
                                      NumVDataDwords, NumVAddrDwords);
       if (Opcode == -1)
-        return makeV_ILLEGAL(Op, DAG);
+        report_fatal_error(
+            "requested image instruction is not supported on this GPU");
     }
     if (Opcode == -1 &&
         Subtarget->getGeneration() >= AMDGPUSubtarget::VOLCANIC_ISLANDS)
@@ -6759,7 +6762,8 @@ SDValue SITargetLowering::lowerImage(SDValue Op,
       Opcode = AMDGPU::getMIMGOpcode(IntrOpcode, AMDGPU::MIMGEncGfx6,
                                      NumVDataDwords, NumVAddrDwords);
   }
-  assert(Opcode != -1);
+  if (Opcode == -1)
+    return Op;
 
   MachineSDNode *NewNode = DAG.getMachineNode(Opcode, DL, ResultTypes, Ops);
   if (auto MemOp = dyn_cast<MemSDNode>(Op)) {
@@ -7910,11 +7914,6 @@ SDValue SITargetLowering::LowerINTRINSIC_W_CHAIN(SDValue Op,
     DAG.setNodeMemRefs(NewNode, {MemRef});
     return SDValue(NewNode, 0);
   }
-  case Intrinsic::amdgcn_global_atomic_fadd: {
-    if (!Subtarget->hasAtomicFaddNoRtnInsts())
-      return makeV_ILLEGAL(Op, DAG);
-    return SDValue();
-  }
   case Intrinsic::amdgcn_global_atomic_fmin:
   case Intrinsic::amdgcn_global_atomic_fmax:
   case Intrinsic::amdgcn_flat_atomic_fmin:
@@ -8505,27 +8504,6 @@ SDValue SITargetLowering::LowerINTRINSIC_VOID(SDValue Op,
     return Op;
   }
   }
-}
-
-SDValue SITargetLowering::makeV_ILLEGAL(SDValue Op, SelectionDAG & DAG) const {
-  // Create the V_ILLEGAL node.
-  SDLoc DL(Op);
-  auto Opcode = Subtarget->getGeneration() < AMDGPUSubtarget::GFX10 ?
-    AMDGPU::V_ILLEGAL_gfx6_gfx7_gfx8_gfx9 : AMDGPU::V_ILLEGAL;
-  auto EntryNode = DAG.getEntryNode();
-  auto IllegalNode = DAG.getMachineNode(Opcode, DL, MVT::Other, EntryNode);
-  auto IllegalVal = SDValue(IllegalNode, 0u);
-
-  // Add the V_ILLEGAL node to the root chain to prevent its removal.
-  auto Chains = SmallVector<SDValue, 2u>();
-  Chains.push_back(IllegalVal);
-  Chains.push_back(DAG.getRoot());
-  auto Root = DAG.getTokenFactor(SDLoc(Chains.back()), Chains);
-  DAG.setRoot(Root);
-
-  // Merge with UNDEF to satisfy return value requirements.
-  auto UndefVal = DAG.getUNDEF(Op.getValueType());
-  return DAG.getMergeValues({UndefVal, IllegalVal}, DL);
 }
 
 // The raw.(t)buffer and struct.(t)buffer intrinsics have two offset args:
@@ -12728,6 +12706,41 @@ void SITargetLowering::finalizeLowering(MachineFunction &MF) const {
   }
 
   TargetLoweringBase::finalizeLowering(MF);
+}
+
+void SITargetLowering::computeKnownBitsForTargetNode(const SDValue Op,
+                                                     KnownBits &Known,
+                                                     const APInt &DemandedElts,
+                                                     const SelectionDAG &DAG,
+                                                     unsigned Depth) const {
+  Known.resetAll();
+  unsigned Opc = Op.getOpcode();
+  switch (Opc) {
+  case ISD::INTRINSIC_WO_CHAIN: {
+    unsigned IID = cast<ConstantSDNode>(Op.getOperand(0))->getZExtValue();
+    switch (IID) {
+    case Intrinsic::amdgcn_mbcnt_lo:
+    case Intrinsic::amdgcn_mbcnt_hi: {
+      const GCNSubtarget &ST =
+          DAG.getMachineFunction().getSubtarget<GCNSubtarget>();
+      // These return at most the (wavefront size - 1) + src1
+      // As long as src1 is an immediate we can calc known bits
+      KnownBits Src1Known = DAG.computeKnownBits(Op.getOperand(2), Depth + 1);
+      unsigned Src1ValBits = Src1Known.countMaxActiveBits();
+      unsigned MaxActiveBits = std::max(Src1ValBits, ST.getWavefrontSizeLog2());
+      // Cater for potential carry
+      MaxActiveBits += Src1ValBits ? 1 : 0;
+      unsigned Size = Op.getValueType().getSizeInBits();
+      if (MaxActiveBits < Size)
+        Known.Zero.setHighBits(Size - MaxActiveBits);
+      return;
+    }
+    }
+    break;
+  }
+  }
+  return AMDGPUTargetLowering::computeKnownBitsForTargetNode(
+      Op, Known, DemandedElts, DAG, Depth);
 }
 
 void SITargetLowering::computeKnownBitsForFrameIndex(
