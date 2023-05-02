@@ -253,7 +253,7 @@ bool Disassembler::ElideMixedSourceAndDisassemblyLine(
     if (target_sp) {
       Status error;
       OptionValueSP value_sp = target_sp->GetDebugger().GetPropertyValue(
-          &exe_ctx, "target.process.thread.step-avoid-regexp", false, error);
+          &exe_ctx, "target.process.thread.step-avoid-regexp", error);
       if (value_sp && value_sp->GetType() == OptionValue::eTypeRegex) {
         OptionValueRegex *re = value_sp->GetAsRegex();
         if (re) {
@@ -908,7 +908,7 @@ bool Instruction::TestEmulation(Stream *out_stream, const char *file_name) {
     return false;
   }
 
-  SetDescription(value_sp->GetStringValue());
+  SetDescription(value_sp->GetStringValue().value_or(""));
 
   value_sp = data_dictionary->GetValueForKey(triple_key);
   if (!value_sp) {
@@ -918,7 +918,7 @@ bool Instruction::TestEmulation(Stream *out_stream, const char *file_name) {
   }
 
   ArchSpec arch;
-  arch.SetTriple(llvm::Triple(value_sp->GetStringValue()));
+  arch.SetTriple(llvm::Triple(value_sp->GetStringValue().value_or("")));
 
   bool success = false;
   std::unique_ptr<EmulateInstruction> insn_emulator_up(
