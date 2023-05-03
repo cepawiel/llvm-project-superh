@@ -55,7 +55,6 @@ C++ Specific Potentially Breaking Changes
 -----------------------------------------
 - Clang won't search for coroutine_traits in std::experimental namespace any more.
   Clang will only search for std::coroutine_traits for coroutines then.
-- Clang now rejects unions containing a flexible array member.
 
 ABI Changes in This Version
 ---------------------------
@@ -139,6 +138,25 @@ C2x Feature Support
   As part of this change, the ``-Wgnu-empty-initializer`` warning group was
   removed, as this is no longer a GNU extension but a C2x extension. You can
   use ``-Wno-c2x-extensions`` to silence the extension warning instead.
+
+- Updated the implementation of
+  `WG14 N3042 <https://www.open-std.org/jtc1/sc22/wg14/www/docs/n3042.htm>`_
+  based on decisions reached during the WG14 CD Ballot Resolution meetings held
+  in Jan and Feb 2023. This should complete the implementation of ``nullptr``
+  and ``nullptr_t`` in C. The specific changes are:
+
+  .. code-block:: c
+
+    void func(nullptr_t);
+    func(0); // Previously required to be rejected, is now accepted.
+    func((void *)0); // Previously required to be rejected, is now accepted.
+
+    nullptr_t val;
+    val = 0; // Previously required to be rejected, is now accepted.
+    val = (void *)0; // Previously required to be rejected, is now accepted.
+
+    bool b = nullptr; // Was incorrectly rejected by Clang, is now accepted.
+
 
 Non-comprehensive list of changes in this release
 -------------------------------------------------
