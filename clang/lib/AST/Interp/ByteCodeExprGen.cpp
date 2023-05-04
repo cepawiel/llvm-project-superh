@@ -146,7 +146,9 @@ bool ByteCodeExprGen<Emitter>::VisitCastExpr(const CastExpr *CE) {
     if (!this->visit(SubExpr))
       return false;
 
-    // TODO: Emit this only if FromT != ToT.
+    if (FromT == ToT)
+      return true;
+
     return this->emitCast(*FromT, *ToT, CE);
   }
 
@@ -829,7 +831,7 @@ bool ByteCodeExprGen<Emitter>::VisitMaterializeTemporaryExpr(
   // For everyhing else, use local variables.
   if (SubExprT) {
     if (std::optional<unsigned> LocalIndex = allocateLocalPrimitive(
-            SubExpr, *SubExprT, /*IsMutable=*/true, /*IsExtended=*/true)) {
+            SubExpr, *SubExprT, /*IsConst=*/true, /*IsExtended=*/true)) {
       if (!this->visitInitializer(SubExpr))
         return false;
       this->emitSetLocal(*SubExprT, *LocalIndex, E);

@@ -6165,7 +6165,7 @@ SDValue RISCVTargetLowering::lowerEXTRACT_VECTOR_ELT(SDValue Op,
       SDValue Vfirst =
           DAG.getNode(RISCVISD::VFIRST_VL, DL, XLenVT, Vec, Mask, VL);
       return DAG.getSetCC(DL, XLenVT, Vfirst, DAG.getConstant(0, DL, XLenVT),
-                          ISD::SETEQ);
+                          ISD::SETNE);
     }
     if (VecVT.isFixedLengthVector()) {
       unsigned NumElts = VecVT.getVectorNumElements();
@@ -7318,9 +7318,9 @@ static SDValue widenVectorOpsToi8(SDValue N, SDLoc &DL, SelectionDAG &DAG) {
   SDValue WideN = DAG.getNode(N.getOpcode(), DL, VTs, WideOps);
   SmallVector<SDValue, 4> TruncVals;
   for (unsigned I = 0; I < NumVals; I++) {
-    TruncVals.push_back(DAG.getNode(ISD::TRUNCATE, DL,
-                                    N->getSimpleValueType(I),
-                                    SDValue(WideN.getNode(), I)));
+    TruncVals.push_back(
+        DAG.getSetCC(DL, N->getSimpleValueType(I), WideN.getValue(I),
+                     DAG.getConstant(0, DL, WideVT), ISD::SETNE));
   }
 
   if (TruncVals.size() > 1)
