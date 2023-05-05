@@ -112,9 +112,6 @@ public:
   OptionValueLanguage *GetPropertyAtIndexAsOptionValueLanguage(
       uint32_t idx, const ExecutionContext *exe_ctx = nullptr) const;
 
-  bool SetPropertyAtIndexAsLanguage(uint32_t idx, lldb::LanguageType lang,
-                                    const ExecutionContext *exe_ctx = nullptr);
-
   bool
   GetPropertyAtIndexAsArgs(uint32_t idx, Args &args,
                            const ExecutionContext *exe_ctx = nullptr) const;
@@ -136,13 +133,6 @@ public:
 
   OptionValueFileSpec *GetPropertyAtIndexAsOptionValueFileSpec(
       uint32_t idx, const ExecutionContext *exe_ctx = nullptr) const;
-
-  FileSpec
-  GetPropertyAtIndexAsFileSpec(uint32_t idx,
-                               const ExecutionContext *exe_ctx = nullptr) const;
-
-  bool SetPropertyAtIndexAsFileSpec(uint32_t idx, const FileSpec &file_spec,
-                                    const ExecutionContext *exe_ctx = nullptr);
 
   OptionValuePathMappings *GetPropertyAtIndexAsOptionValuePathMappings(
       uint32_t idx, const ExecutionContext *exe_ctx = nullptr) const;
