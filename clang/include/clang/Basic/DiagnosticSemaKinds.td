@@ -5490,10 +5490,10 @@ def note_template_kw_refers_to_non_template : Note<
 def err_template_kw_refers_to_dependent_non_template : Error<
   "%0%select{| following the 'template' keyword}1 "
   "cannot refer to a dependent template">;
-def err_template_kw_refers_to_class_template : Error<
-  "'%0%1' instantiated to a class template, not a function template">;
-def note_referenced_class_template : Note<
-  "class template declared here">;
+def err_template_kw_refers_to_type_template : Error<
+  "'%0%1' is expected to be a non-type template, but instantiated to a %select{class|type alias}2 template">;
+def note_referenced_type_template : Note<
+  "%select{class|type alias}0 template declared here">;
 def err_template_kw_missing : Error<
   "missing 'template' keyword prior to dependent template name '%0%1'">;
 def ext_template_outside_of_template : ExtWarn<
@@ -6981,9 +6981,8 @@ def err_typecheck_indirection_requires_pointer : Error<
 def ext_typecheck_indirection_through_void_pointer : ExtWarn<
   "ISO C does not allow indirection on operand of type %0">,
   InGroup<VoidPointerDeref>;
-def ext_typecheck_indirection_through_void_pointer_cpp
-    : ExtWarn<"ISO C++ does not allow indirection on operand of type %0">,
-      InGroup<VoidPointerDeref>, DefaultError, SFINAEFailure;
+def err_typecheck_indirection_through_void_pointer_cpp
+    : Error<"indirection not permitted on operand of type %0">;
 def warn_indirection_through_null : Warning<
   "indirection of non-volatile null pointer will be deleted, not trap">,
   InGroup<NullDereference>;
