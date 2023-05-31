@@ -2477,6 +2477,9 @@ lowerVectorFTRUNC_FCEIL_FFLOOR_FROUND(SDValue Op, SelectionDAG &DAG,
   SDValue Mask, VL;
   if (Op->isVPOpcode()) {
     Mask = Op.getOperand(1);
+    if (VT.isFixedLengthVector())
+      Mask = convertToScalableVector(getMaskTypeFor(ContainerVT), Mask, DAG,
+                                     Subtarget);
     VL = Op.getOperand(2);
   } else {
     std::tie(Mask, VL) = getDefaultVLOps(VT, ContainerVT, DL, DAG, Subtarget);
@@ -3731,6 +3734,20 @@ static SDValue lowerVECTOR_SHUFFLEAsVSlideup(const SDLoc &DL, MVT VT,
   MVT XLenVT = Subtarget.getXLenVT();
   MVT ContainerVT = getContainerForFixedLengthVector(DAG, VT, Subtarget);
   auto TrueMask = getDefaultVLOps(VT, ContainerVT, DL, DAG, Subtarget).first;
+  if (Index == 1 && NumSubElts + Index == (int)NumElts &&
+      isa<BuildVectorSDNode>(InPlace)) {
+    if (SDValue Splat = cast<BuildVectorSDNode>(InPlace)->getSplatValue()) {
+      auto OpCode =
+        VT.isFloatingPoint() ? RISCVISD::VFSLIDE1UP_VL : RISCVISD::VSLIDE1UP_VL;
+      auto Vec = DAG.getNode(OpCode, DL, ContainerVT,
+                             DAG.getUNDEF(ContainerVT),
+                             convertToScalableVector(ContainerVT, ToInsert, DAG, Subtarget),
+                             Splat, TrueMask,
+                             DAG.getConstant(NumSubElts + Index, DL, XLenVT));
+      return convertFromScalableVector(VT, Vec, DAG, Subtarget);
+    }
+  }
+
   // We slide up by the index that the subvector is being inserted at, and set
   // VL to the index + the number of elements being inserted.
   unsigned Policy = RISCVII::TAIL_UNDISTURBED_MASK_UNDISTURBED | RISCVII::MASK_AGNOSTIC;
@@ -3967,6 +3984,10 @@ static SDValue lowerVECTOR_SHUFFLE(SDValue Op, SelectionDAG &DAG,
                                    Subtarget, DAG);
   }
 
+  if (SDValue V =
+          lowerVECTOR_SHUFFLEAsVSlideup(DL, VT, V1, V2, Mask, Subtarget, DAG))
+    return V;
+
   // Detect an interleave shuffle and lower to
   // (vmaccu.vx (vwaddu.vx lohalf(V1), lohalf(V2)), lohalf(V2), (2^eltbits - 1))
   int EvenSrc, OddSrc;
@@ -3988,10 +4009,6 @@ static SDValue lowerVECTOR_SHUFFLE(SDValue Op, SelectionDAG &DAG,
 
     return getWideningInterleave(EvenV, OddV, DL, DAG, Subtarget);
   }
-
-  if (SDValue V =
-          lowerVECTOR_SHUFFLEAsVSlideup(DL, VT, V1, V2, Mask, Subtarget, DAG))
-    return V;
 
   // Detect shuffles which can be re-expressed as vector selects; these are
   // shuffles in which each element in the destination is taken from an element
@@ -5494,6 +5511,20 @@ SDValue RISCVTargetLowering::lowerSELECT(SDValue Op, SelectionDAG &DAG) const {
 
   if (SDValue V = combineSelectToBinOp(Op.getNode(), DAG, Subtarget))
     return V;
+
+  // (select cc, 1.0, 0.0) -> (sint_to_fp (zext cc))
+  // (select cc, 0.0, 1.0) -> (sint_to_fp (zext (xor cc, 1)))
+  const ConstantFPSDNode *FPTV = dyn_cast<ConstantFPSDNode>(TrueV);
+  const ConstantFPSDNode *FPFV = dyn_cast<ConstantFPSDNode>(FalseV);
+  if (FPTV && FPFV) {
+    if (FPTV->isExactlyValue(1.0) && FPFV->isExactlyValue(0.0))
+      return DAG.getNode(ISD::SINT_TO_FP, DL, VT, CondV);
+    if (FPTV->isExactlyValue(0.0) && FPFV->isExactlyValue(1.0)) {
+      SDValue XOR = DAG.getNode(ISD::XOR, DL, XLenVT, CondV,
+                                DAG.getConstant(1, DL, XLenVT));
+      return DAG.getNode(ISD::SINT_TO_FP, DL, VT, XOR);
+    }
+  }
 
   // If the condition is not an integer SETCC which operates on XLenVT, we need
   // to emit a RISCVISD::SELECT_CC comparing the condition to zero. i.e.:
@@ -8048,6 +8079,9 @@ SDValue RISCVTargetLowering::lowerABS(SDValue Op, SelectionDAG &DAG) const {
   SDValue Mask, VL;
   if (Op->getOpcode() == ISD::VP_ABS) {
     Mask = Op->getOperand(1);
+    if (VT.isFixedLengthVector())
+      Mask = convertToScalableVector(getMaskTypeFor(ContainerVT), Mask, DAG,
+                                     Subtarget);
     VL = Op->getOperand(2);
   } else
     std::tie(Mask, VL) = getDefaultVLOps(VT, ContainerVT, DL, DAG, Subtarget);
@@ -11338,6 +11372,39 @@ static SDValue performVFMADD_VLCombine(SDNode *N, SelectionDAG &DAG) {
                      N->getOperand(2), Mask, VL);
 }
 
+static SDValue performVFMUL_VLCombine(SDNode *N, SelectionDAG &DAG) {
+  // FIXME: Ignore strict opcodes for now.
+  assert(!N->isTargetStrictFPOpcode() && "Unexpected opcode");
+
+  // Try to form widening multiply.
+  SDValue Op0 = N->getOperand(0);
+  SDValue Op1 = N->getOperand(1);
+  SDValue Merge = N->getOperand(2);
+  SDValue Mask = N->getOperand(3);
+  SDValue VL = N->getOperand(4);
+
+  if (Op0.getOpcode() != RISCVISD::FP_EXTEND_VL ||
+      Op1.getOpcode() != RISCVISD::FP_EXTEND_VL)
+    return SDValue();
+
+  // TODO: Refactor to handle more complex cases similar to
+  // combineBinOp_VLToVWBinOp_VL.
+  if ((!Op0.hasOneUse() || !Op1.hasOneUse()) &&
+      (Op0 != Op1 || !Op0->hasNUsesOfValue(2, 0)))
+    return SDValue();
+
+  // Check the mask and VL are the same.
+  if (Op0.getOperand(1) != Mask || Op0.getOperand(2) != VL ||
+      Op1.getOperand(1) != Mask || Op1.getOperand(2) != VL)
+    return SDValue();
+
+  Op0 = Op0.getOperand(0);
+  Op1 = Op1.getOperand(0);
+
+  return DAG.getNode(RISCVISD::VFWMUL_VL, SDLoc(N), N->getValueType(0), Op0,
+                     Op1, Merge, Mask, VL);
+}
+
 static SDValue performSRACombine(SDNode *N, SelectionDAG &DAG,
                                  const RISCVSubtarget &Subtarget) {
   assert(N->getOpcode() == ISD::SRA && "Unexpected opcode");
@@ -12212,6 +12279,8 @@ SDValue RISCVTargetLowering::PerformDAGCombine(SDNode *N,
   case RISCVISD::STRICT_VFMSUB_VL:
   case RISCVISD::STRICT_VFNMSUB_VL:
     return performVFMADD_VLCombine(N, DAG);
+  case RISCVISD::FMUL_VL:
+    return performVFMUL_VLCombine(N, DAG);
   case ISD::LOAD:
   case ISD::STORE: {
     if (DCI.isAfterLegalizeDAG())
@@ -15322,6 +15391,7 @@ const char *RISCVTargetLowering::getTargetNodeName(unsigned Opcode) const {
   NODE_NAME_CASE(VWADDU_W_VL)
   NODE_NAME_CASE(VWSUB_W_VL)
   NODE_NAME_CASE(VWSUBU_W_VL)
+  NODE_NAME_CASE(VFWMUL_VL)
   NODE_NAME_CASE(VNSRL_VL)
   NODE_NAME_CASE(SETCC_VL)
   NODE_NAME_CASE(VSELECT_VL)
@@ -15985,9 +16055,9 @@ Register RISCVTargetLowering::getExceptionSelectorRegister(
 
 bool RISCVTargetLowering::shouldExtendTypeInLibCall(EVT Type) const {
   // Return false to suppress the unnecessary extensions if the LibCall
-  // arguments or return value is f32 type for LP64 ABI.
-  RISCVABI::ABI ABI = Subtarget.getTargetABI();
-  if (ABI == RISCVABI::ABI_LP64 && (Type == MVT::f32))
+  // arguments or return value is a float narrower than XLEN on a soft FP ABI.
+  if (Subtarget.isSoftFPABI() && (Type.isFloatingPoint() && !Type.isVector() &&
+                                  Type.getSizeInBits() < Subtarget.getXLen()))
     return false;
 
   return true;

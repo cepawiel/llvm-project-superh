@@ -471,9 +471,7 @@ static void selectInterestingSourceRegion(std::string &SourceLine,
   CaretEnd = map.byteToColumn(SourceEnd) + CaretColumnsOutsideSource;
 
   // [CaretStart, CaretEnd) is the slice we want. Update the various
-  // output lines to show only this slice, with two-space padding
-  // before the lines so that it looks nicer.
-
+  // output lines to show only this slice.
   assert(CaretStart!=(unsigned)-1 && CaretEnd!=(unsigned)-1 &&
          SourceStart!=(unsigned)-1 && SourceEnd!=(unsigned)-1);
   assert(SourceStart <= SourceEnd);
@@ -1120,6 +1118,14 @@ static std::string buildFixItInsertionLine(FileID FID,
   return FixItInsertionLine;
 }
 
+static unsigned getNumDisplayWidth(unsigned N) {
+  unsigned L = 1u, M = 10u;
+  while (M <= N && ++L != std::numeric_limits<unsigned>::digits10 + 1)
+    M *= 10u;
+
+  return L;
+}
+
 /// Emit a code snippet and caret line.
 ///
 /// This routine emits a single line's code snippet and caret line..
@@ -1172,7 +1178,26 @@ void TextDiagnostic::emitSnippetAndCaret(
       Lines = maybeAddRange(Lines, *OptionalRange, MaxLines);
   }
 
-  for (unsigned LineNo = Lines.first; LineNo != Lines.second + 1; ++LineNo) {
+  // Our line numbers look like:
+  // " [number] | "
+  // Where [number] is MaxLineNoDisplayWidth columns
+  // and the full thing is therefore MaxLineNoDisplayWidth + 4 columns.
+  unsigned DisplayLineNo = Loc.getPresumedLoc().getLine();
+  unsigned MaxLineNoDisplayWidth =
+      DiagOpts->ShowLineNumbers
+          ? std::max(4u, getNumDisplayWidth(DisplayLineNo + MaxLines))
+          : 0;
+  auto indentForLineNumbers = [&] {
+    if (MaxLineNoDisplayWidth > 0) {
+      OS << ' ';
+      for (unsigned I = 0; I != MaxLineNoDisplayWidth; ++I)
+        OS << ' ';
+      OS << " | ";
+    }
+  };
+
+  for (unsigned LineNo = Lines.first; LineNo != Lines.second + 1;
+       ++LineNo, ++DisplayLineNo) {
     const char *BufStart = BufData.data();
     const char *BufEnd = BufStart + BufData.size();
 
@@ -1245,9 +1270,10 @@ void TextDiagnostic::emitSnippetAndCaret(
       CaretLine.erase(CaretLine.end() - 1);
 
     // Emit what we have computed.
-    emitSnippet(SourceLine);
+    emitSnippet(SourceLine, MaxLineNoDisplayWidth, DisplayLineNo);
 
     if (!CaretLine.empty()) {
+      indentForLineNumbers();
       if (DiagOpts->ShowColors)
         OS.changeColor(caretColor, true);
       OS << CaretLine << '\n';
@@ -1256,6 +1282,7 @@ void TextDiagnostic::emitSnippetAndCaret(
     }
 
     if (!FixItInsertionLine.empty()) {
+      indentForLineNumbers();
       if (DiagOpts->ShowColors)
         // Print fixit line in color
         OS.changeColor(fixitColor, false);
@@ -1271,37 +1298,46 @@ void TextDiagnostic::emitSnippetAndCaret(
   emitParseableFixits(Hints, SM);
 }
 
-void TextDiagnostic::emitSnippet(StringRef line) {
-  if (line.empty())
+void TextDiagnostic::emitSnippet(StringRef SourceLine,
+                                 unsigned MaxLineNoDisplayWidth,
+                                 unsigned LineNo) {
+  if (SourceLine.empty())
     return;
 
-  size_t i = 0;
+  // Emit line number.
+  if (MaxLineNoDisplayWidth > 0) {
+    unsigned LineNoDisplayWidth = getNumDisplayWidth(LineNo);
+    OS << ' ';
+    for (unsigned I = LineNoDisplayWidth; I < MaxLineNoDisplayWidth; ++I)
+      OS << ' ';
+    OS << LineNo;
+    OS << " | ";
+  }
 
-  std::string to_print;
-  bool print_reversed = false;
+  bool PrintReversed = false;
+  std::string ToPrint;
+  size_t I = 0;
+  while (I < SourceLine.size()) {
+    auto [Str, WasPrintable] =
+        printableTextForNextCharacter(SourceLine, &I, DiagOpts->TabStop);
 
-  while (i<line.size()) {
-    std::pair<SmallString<16>,bool> res
-        = printableTextForNextCharacter(line, &i, DiagOpts->TabStop);
-    bool was_printable = res.second;
-
-    if (DiagOpts->ShowColors && was_printable == print_reversed) {
-      if (print_reversed)
+    if (DiagOpts->ShowColors && WasPrintable == PrintReversed) {
+      if (PrintReversed)
         OS.reverseColor();
-      OS << to_print;
-      to_print.clear();
+      OS << ToPrint;
+      ToPrint.clear();
       if (DiagOpts->ShowColors)
         OS.resetColor();
     }
 
-    print_reversed = !was_printable;
-    to_print += res.first.str();
+    PrintReversed = !WasPrintable;
+    ToPrint += Str;
   }
 
-  if (print_reversed && DiagOpts->ShowColors)
+  if (PrintReversed && DiagOpts->ShowColors)
     OS.reverseColor();
-  OS << to_print;
-  if (print_reversed && DiagOpts->ShowColors)
+  OS << ToPrint;
+  if (PrintReversed && DiagOpts->ShowColors)
     OS.resetColor();
 
   OS << '\n';
