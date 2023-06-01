@@ -1280,8 +1280,9 @@ void ASTWriter::WriteControlBlock(Preprocessor &PP, ASTContext &Context,
     SmallString<128> BaseDir;
     if (PP.getHeaderSearchInfo().getHeaderSearchOpts().ModuleFileHomeIsCwd) {
       // Use the current working directory as the base path for all inputs.
-      auto *CWD =
-          Context.getSourceManager().getFileManager().getDirectory(".").get();
+      auto CWD =
+          Context.getSourceManager().getFileManager().getOptionalDirectoryRef(
+              ".");
       BaseDir.assign(CWD->getName());
     } else {
       BaseDir.assign(WritingModule->Directory->getName());
@@ -4380,6 +4381,7 @@ void ASTRecordWriter::AddAttr(const Attr *A) {
   Record.push_back(A->getParsedKind());
   Record.push_back(A->getSyntax());
   Record.push_back(A->getAttributeSpellingListIndexRaw());
+  Record.push_back(A->isRegularKeywordAttribute());
 
 #include "clang/Serialization/AttrPCHWrite.inc"
 }
