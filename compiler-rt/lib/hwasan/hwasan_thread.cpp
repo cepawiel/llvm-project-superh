@@ -97,7 +97,9 @@ void Thread::ClearShadowForThreadStackAndTLS() {
               UntagAddr(stack_top_) - UntagAddr(stack_bottom_),
               GetTagFromPointer(stack_top_));
   if (tls_begin_ != tls_end_)
-    TagMemory(tls_begin_, tls_end_ - tls_begin_, 0);
+    TagMemory(UntagAddr(tls_begin_),
+              UntagAddr(tls_end_) - UntagAddr(tls_begin_),
+              GetTagFromPointer(tls_begin_));
 }
 
 void Thread::Destroy() {
