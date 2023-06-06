@@ -119,6 +119,7 @@
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/InstIterator.h"
 #include "llvm/IR/Instruction.h"
+#include "llvm/IR/Instructions.h"
 #include "llvm/IR/PassManager.h"
 #include "llvm/IR/Value.h"
 #include "llvm/Support/Alignment.h"
@@ -266,18 +267,24 @@ struct RangeTy {
   }
 
   RangeTy &operator&=(const RangeTy &R) {
-    if (Offset == Unassigned)
-      Offset = R.Offset;
-    else if (R.Offset != Unassigned && R.Offset != Offset)
+    if (R.isUnassigned())
+      return *this;
+    if (isUnassigned())
+      return *this = R;
+    if (Offset == Unknown || R.Offset == Unknown)
       Offset = Unknown;
-
-    if (Size == Unassigned)
-      Size = R.Size;
-    else if (Size == Unknown || R.Size == Unknown)
+    if (Size == Unknown || R.Size == Unknown)
       Size = Unknown;
-    else if (R.Size != Unassigned)
+    if (offsetAndSizeAreUnknown())
+      return *this;
+    if (Offset == Unknown) {
       Size = std::max(Size, R.Size);
-
+    } else if (Size == Unknown) {
+      Offset = std::min(Offset, R.Offset);
+    } else {
+      Offset = std::min(Offset, R.Offset);
+      Size = std::max(Offset + Size, R.Offset + R.Size) - Offset;
+    }
     return *this;
   }
 
@@ -3405,6 +3412,38 @@ struct AANoSync
 };
 
 /// An abstract interface for all nonnull attributes.
+struct AAMustProgress
+    : public IRAttribute<Attribute::MustProgress,
+                         StateWrapper<BooleanState, AbstractAttribute>> {
+  AAMustProgress(const IRPosition &IRP, Attributor &A) : IRAttribute(IRP) {}
+
+  /// Return true if we assume that the underlying value is nonnull.
+  bool isAssumedMustProgress() const { return getAssumed(); }
+
+  /// Return true if we know that underlying value is nonnull.
+  bool isKnownMustProgress() const { return getKnown(); }
+
+  /// Create an abstract attribute view for the position \p IRP.
+  static AAMustProgress &createForPosition(const IRPosition &IRP,
+                                           Attributor &A);
+
+  /// See AbstractAttribute::getName()
+  const std::string getName() const override { return "AAMustProgress"; }
+
+  /// See AbstractAttribute::getIdAddr()
+  const char *getIdAddr() const override { return &ID; }
+
+  /// This function should return true if the type of the \p AA is
+  /// AAMustProgress
+  static bool classof(const AbstractAttribute *AA) {
+    return (AA->getIdAddr() == &ID);
+  }
+
+  /// Unique ID (due to the unique address)
+  static const char ID;
+};
+
+/// An abstract interface for all nonnull attributes.
 struct AANonNull
     : public IRAttribute<Attribute::NonNull,
                          StateWrapper<BooleanState, AbstractAttribute>> {
@@ -5139,6 +5178,10 @@ struct AAExecutionDomain
   virtual std::pair<ExecutionDomainTy, ExecutionDomainTy>
   getExecutionDomain(const CallBase &CB) const = 0;
   virtual ExecutionDomainTy getFunctionExecutionDomain() const = 0;
+
+  /// Helper function to determine if \p FI is a no-op given the information
+  /// about its execution from \p ExecDomainAA.
+  virtual bool isNoOpFence(const FenceInst &FI) const = 0;
 
   /// This function should return true if the type of the \p AA is
   /// AAExecutionDomain.
