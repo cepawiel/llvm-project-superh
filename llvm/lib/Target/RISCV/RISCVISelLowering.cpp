@@ -4400,6 +4400,18 @@ static SDValue lowerConstant(SDValue Op, SelectionDAG &DAG,
   if (Seq.size() <= Subtarget.getMaxBuildIntsCost())
     return Op;
 
+  // Special case. See if we can build the constant as (ADD (SLLI X, 32), X) do
+  // that if it will avoid a constant pool.
+  // It will require an extra temporary register though.
+  int64_t LoVal = SignExtend64<32>(Imm);
+  int64_t HiVal = SignExtend64<32>(((uint64_t)Imm - (uint64_t)LoVal) >> 32);
+  if (LoVal == HiVal) {
+    RISCVMatInt::InstSeq SeqLo =
+        RISCVMatInt::generateInstSeq(LoVal, Subtarget.getFeatureBits());
+    if ((SeqLo.size() + 2) <= Subtarget.getMaxBuildIntsCost())
+      return Op;
+  }
+
   // Expand to a constant pool using the default expansion code.
   return SDValue();
 }
@@ -11400,8 +11412,6 @@ static SDValue performBITREVERSECombine(SDNode *N, SelectionDAG &DAG,
 // multiply result and/or the accumulator.
 // NOTE: Only supports RVV operations with VL.
 static unsigned negateFMAOpcode(unsigned Opcode, bool NegMul, bool NegAcc) {
-  assert((NegMul || NegAcc) && "Not negating anything?");
-
   // Negating the multiply result changes ADD<->SUB and toggles 'N'.
   if (NegMul) {
     // clang-format off
