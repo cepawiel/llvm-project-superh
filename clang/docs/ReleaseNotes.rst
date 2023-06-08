@@ -254,6 +254,7 @@ Removed Compiler Flags
 - The CodeGen flag `-lower-global-dtors-via-cxa-atexit` which affects how global
   destructors are lowered for MachO is removed without replacement. The default
   of `-lower-global-dtors-via-cxa-atexit=true` is now the only supported way.
+- The cc1 flag ``-no-opaque-pointers`` has been removed.
 
 Attribute Changes in Clang
 --------------------------
@@ -485,6 +486,12 @@ Bug Fixes in This Version
 - Fix assertion and quality of diagnostic messages in a for loop
   containing multiple declarations and a range specifier
   (`#63010 <https://github.com/llvm/llvm-project/issues/63010>`_).
+- Fix rejects-valid when consteval operator appears inside of a template.
+  (`#62886 <https://github.com/llvm/llvm-project/issues/62886>`_).
+- Fix crash for code using ``_Atomic`` types in C++
+  (`See patch <https://reviews.llvm.org/D152303>`_).
+- Fix crash when passing a value larger then 64 bits to the aligned attribute.
+  (`#50534 <https://github.com/llvm/llvm-project/issues/50534>`_).
 
 Bug Fixes to Compiler Builtins
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
