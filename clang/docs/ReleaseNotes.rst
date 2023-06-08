@@ -126,6 +126,7 @@ C++23 Feature Support
   functions. Which include allowing non-literal types as return values and parameters, allow calling of
   non-constexpr functions and constructors.
 - Clang now supports `requires cplusplus23` for module maps.
+- Implemented `P2564R3: consteval needs to propagate up <https://wg21.link/P2564R3>`_.
 
 C++2c Feature Support
 ^^^^^^^^^^^^^^^^^^^^^
@@ -222,6 +223,8 @@ Non-comprehensive list of changes in this release
 - Clang now support ``__builtin_FUNCSIG()`` which returns the same information
   as the ``__FUNCSIG__`` macro (available only with ``-fms-extensions`` flag).
   This fixes (`#58951 <https://github.com/llvm/llvm-project/issues/58951>`_).
+- Clang now supports the `NO_COLOR <https://no-color.org/>`_ environment
+  variable as a way to disable color diagnostics.
 
 New Compiler Flags
 ------------------
@@ -546,6 +549,9 @@ Bug Fixes to C++ Support
 - Fix access of a friend class declared in a local class. Clang previously
   emitted an error when a friend of a local class tried to access it's
   private data members.
+- Allow abstract parameter and return types in functions that are
+  either deleted or not defined.
+  (`#63012 <https://github.com/llvm/llvm-project/issues/63012>`_)
 
 Bug Fixes to AST Handling
 ^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -694,6 +700,7 @@ clang-format
 - Fix all known issues associated with ``LambdaBodyIndentation: OuterScope``.
 - Add ``BracedInitializerIndentWidth`` which can be used to configure
   the indentation level of the contents of braced init lists.
+- Add ``KeepEmptyLinesAtEOF`` to keep empty lines at end of file.
 
 libclang
 --------
