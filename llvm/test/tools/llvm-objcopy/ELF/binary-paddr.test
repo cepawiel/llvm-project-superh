@@ -264,10 +264,10 @@ ProgramHeaders:
 
 # RUN: yaml2obj --docnum=8 %s -o %t8
 # RUN: llvm-objcopy -O binary --only-section=.text --only-section=.data %t8 %t8.out
-# RUN: od -A x -t x2 %t8.out | FileCheck %s --check-prefix=PHYSUNALIGNED --ignore-case
+# RUN: od -A x -t x1 %t8.out | FileCheck %s --check-prefix=PHYSUNALIGNED --ignore-case
 
-# PHYSUNALIGNED:      000000 2211 4433 6655 8877 aa99 ccbb eedd 00ff
-# PHYSUNALIGNED-NEXT: 000010 2211 4433 acbd abcd
+# PHYSUNALIGNED:      000000 11 22 33 44 55 66 77 88 99 aa bb cc dd ee ff 00
+# PHYSUNALIGNED-NEXT: 000010 11 22 33 44 bd ac cd ab
 
 --- !ELF
 FileHeader:
