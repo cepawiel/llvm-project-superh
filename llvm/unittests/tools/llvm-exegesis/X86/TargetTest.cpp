@@ -85,9 +85,11 @@ Matcher<MCInst> IsMovImmediate(unsigned Opcode, int64_t Reg, int64_t Value) {
   return AllOf(OpcodeIs(Opcode), ElementsAre(IsReg(Reg), IsImm(Value)));
 }
 
+#ifdef __linux__
 Matcher<MCInst> IsMovRegToReg(unsigned Opcode, int64_t Reg1, int64_t Reg2) {
   return AllOf(OpcodeIs(Opcode), ElementsAre(IsReg(Reg1), IsReg(Reg2)));
 }
+#endif
 
 Matcher<MCInst> IsMovValueToStack(unsigned Opcode, int64_t Value,
                                   size_t Offset) {
@@ -598,6 +600,12 @@ TEST_F(X86Core2TargetTest, GenerateLowerMunmapTest) {
                           OpcodeIs(X86::SYSCALL)));
 }
 
+#ifdef __arm__
+static constexpr const intptr_t VAddressSpaceCeiling = 0xC0000000;
+#else
+static constexpr const intptr_t VAddressSpaceCeiling = 0x0000800000000000;
+#endif
+
 TEST_F(X86Core2TargetTest, GenerateUpperMunmapTest) {
   std::vector<MCInst> GeneratedCode;
   State.getExegesisTarget().generateUpperMunmap(GeneratedCode);
@@ -607,7 +615,7 @@ TEST_F(X86Core2TargetTest, GenerateUpperMunmapTest) {
                         OpcodeIs(X86::ADD64rr), OpcodeIs(X86::SHR64ri),
                         OpcodeIs(X86::SHL64ri), OpcodeIs(X86::ADD64ri32),
                         IsMovImmediate(X86::MOV64ri, X86::RSI,
-                                       0x0000800000000000 - getpagesize()),
+                                       VAddressSpaceCeiling - getpagesize()),
                         OpcodeIs(X86::SUB64rr),
                         IsMovImmediate(X86::MOV64ri, X86::RAX, SYS_munmap),
                         OpcodeIs(X86::SYSCALL)}));

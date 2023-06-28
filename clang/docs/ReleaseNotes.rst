@@ -370,6 +370,11 @@ Improvements to Clang's diagnostics
 - Clang now diagnoses unexpected tokens after a
   ``#pragma clang|GCC diagnostic push|pop`` directive.
   (`#13920: <https://github.com/llvm/llvm-project/issues/13920>`_)
+- Clang now does not try to analyze cast validity on variables with dependent alignment (`#63007: <https://github.com/llvm/llvm-project/issues/63007>`_).
+- Clang constexpr evaluator now displays member function calls more precisely
+  by making use of the syntactical structure of function calls. This avoids display
+  of syntactically invalid codes in diagnostics.
+  (`#57081: <https://github.com/llvm/llvm-project/issues/57081>`_)
 
 Bug Fixes in This Version
 -------------------------
@@ -703,6 +708,9 @@ RISC-V Support
 - Added ``attribute(riscv_rvv_vector_bits(__riscv_v_fixed_vlen))`` to allow
   the size of a RVV (RISC-V Vector) scalable type to be specified. This allows
   RVV scalable vector types to be used in structs or in global variables.
+- The rules for ordering of extensions in ``-march`` strings were relaxed. A
+  canonical ordering is no longer enforced on ``z*``, ``s*``, and ``x*``
+  prefixed extensions.
 
 CUDA/HIP Language Changes
 ^^^^^^^^^^^^^^^^^^^^^^^^^
