@@ -134,16 +134,11 @@ public:
     Lock L(M);
 
     if (StackBase == nullptr) {
-#if defined(__APPLE__)
-    int MAP_PRIVATE_MAP_ANONYMOUS = 0x1002;
-#else
-    int MAP_PRIVATE_MAP_ANONYMOUS = 0x22;
-#endif
       StackBase = reinterpret_cast<uint8_t *>(
-          __mmap(0, MaxSize, 0x3 /* PROT_READ | PROT_WRITE*/,
-                 Shared ? 0x21 /*MAP_SHARED | MAP_ANONYMOUS*/
-                        : MAP_PRIVATE_MAP_ANONYMOUS /* MAP_PRIVATE | MAP_ANONYMOUS*/,
-                 -1, 0));
+          __mmap(0, MaxSize, PROT_READ | PROT_WRITE,
+                 (Shared ? MAP_SHARED : MAP_PRIVATE) | MAP_ANONYMOUS, -1, 0));
+      assert(StackBase != MAP_FAILED,
+             "BumpPtrAllocator: failed to mmap stack!");
       StackSize = 0;
     }
 
@@ -714,7 +709,8 @@ ProfileWriterContext readDescriptions() {
   // mmap our binary to memory
   uint64_t Size = __lseek(FD, 0, 2 /*SEEK_END*/);
   uint8_t *BinContents = reinterpret_cast<uint8_t *>(
-      __mmap(0, Size, 0x1 /* PROT_READ*/, 0x2 /* MAP_PRIVATE*/, FD, 0));
+      __mmap(0, Size, PROT_READ, MAP_PRIVATE, FD, 0));
+  assert(BinContents != MAP_FAILED, "readDescriptions: Failed to mmap self!");
   Result.MMapPtr = BinContents;
   Result.MMapSize = Size;
   Elf64_Ehdr *Hdr = reinterpret_cast<Elf64_Ehdr *>(BinContents);
@@ -1590,6 +1586,9 @@ extern "C" void __bolt_instr_indirect_tailcall();
 
 /// Initialization code
 extern "C" void __attribute((force_align_arg_pointer)) __bolt_instr_setup() {
+  __bolt_ind_call_counter_func_pointer = __bolt_instr_indirect_call;
+  __bolt_ind_tailcall_counter_func_pointer = __bolt_instr_indirect_tailcall;
+
   const uint64_t CountersStart =
       reinterpret_cast<uint64_t>(&__bolt_instr_locations[0]);
   const uint64_t CountersEnd = alignTo(
@@ -1597,18 +1596,19 @@ extern "C" void __attribute((force_align_arg_pointer)) __bolt_instr_setup() {
       0x1000);
   DEBUG(reportNumber("replace mmap start: ", CountersStart, 16));
   DEBUG(reportNumber("replace mmap stop: ", CountersEnd, 16));
-  assert (CountersEnd > CountersStart, "no counters");
-  // Maps our counters to be shared instead of private, so we keep counting for
-  // forked processes
-  __mmap(CountersStart, CountersEnd - CountersStart,
-         0x3 /*PROT_READ|PROT_WRITE*/,
-         0x31 /*MAP_ANONYMOUS | MAP_SHARED | MAP_FIXED*/, -1, 0);
+  assert(CountersEnd > CountersStart, "no counters");
 
-  __bolt_ind_call_counter_func_pointer = __bolt_instr_indirect_call;
-  __bolt_ind_tailcall_counter_func_pointer = __bolt_instr_indirect_tailcall;
+  const bool Shared = !__bolt_instr_use_pid;
+  const uint64_t MapPrivateOrShared = Shared ? MAP_SHARED : MAP_PRIVATE;
+
+  void *Ret =
+      __mmap(CountersStart, CountersEnd - CountersStart, PROT_READ | PROT_WRITE,
+             MAP_ANONYMOUS | MapPrivateOrShared | MAP_FIXED, -1, 0);
+  assert(Ret != MAP_FAILED, "__bolt_instr_setup: Failed to mmap counters!");
+
   // Conservatively reserve 100MiB shared pages
   GlobalAlloc.setMaxSize(0x6400000);
-  GlobalAlloc.setShared(true);
+  GlobalAlloc.setShared(Shared);
   GlobalWriteProfileMutex = new (GlobalAlloc, 0) Mutex();
   if (__bolt_instr_num_ind_calls > 0)
     GlobalIndCallCounters =
