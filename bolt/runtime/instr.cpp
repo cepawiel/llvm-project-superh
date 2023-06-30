@@ -248,6 +248,37 @@ extern "C" bool __bolt_instr_conservative;
 struct SimpleHashTableEntryBase {
   uint64_t Key;
   uint64_t Val;
+  void dump(const char *Msg = nullptr) {
+    // TODO: make some sort of formatting function
+    // Currently we have to do it the ugly way because
+    // we want every message to be printed atomically via a single call to
+    // __write. If we use reportNumber() and others nultiple times, we'll get
+    // garbage in mulithreaded environment
+    char Buf[BufSize];
+    char *Ptr = Buf;
+    Ptr = intToStr(Ptr, __getpid(), 10);
+    *Ptr++ = ':';
+    *Ptr++ = ' ';
+    if (Msg)
+      Ptr = strCopy(Ptr, Msg, strLen(Msg));
+    *Ptr++ = '0';
+    *Ptr++ = 'x';
+    Ptr = intToStr(Ptr, (uint64_t)this, 16);
+    *Ptr++ = ':';
+    *Ptr++ = ' ';
+    Ptr = strCopy(Ptr, "MapEntry(0x", sizeof("MapEntry(0x") - 1);
+    Ptr = intToStr(Ptr, Key, 16);
+    *Ptr++ = ',';
+    *Ptr++ = ' ';
+    *Ptr++ = '0';
+    *Ptr++ = 'x';
+    Ptr = intToStr(Ptr, Val, 16);
+    *Ptr++ = ')';
+    *Ptr++ = '\n';
+    assert(Ptr - Buf < BufSize, "Buffer overflow!");
+    // print everything all at once for atomicity
+    __write(2, Buf, Ptr - Buf);
+  }
 };
 
 /// This hash table implementation starts by allocating a table of size
@@ -327,11 +358,13 @@ private:
     TableRoot = new (Alloc, 0) MapEntry[InitialSize];
     MapEntry &Entry = TableRoot[Key % InitialSize];
     Entry.Key = Key;
+    // DEBUG(Entry.dump("Created root entry: "));
     return Entry;
   }
 
   MapEntry &getEntry(MapEntry *Entries, uint64_t Key, uint64_t Selector,
                      BumpPtrAllocator &Alloc, int CurLevel) {
+    // DEBUG(reportNumber("getEntry called, level ", CurLevel, 10));
     const uint32_t NumEntries = CurLevel == 0 ? InitialSize : IncSize;
     uint64_t Remainder = Selector / NumEntries;
     Selector = Selector % NumEntries;
@@ -339,12 +372,14 @@ private:
 
     // A hit
     if (Entry.Key == Key) {
+      // DEBUG(Entry.dump("Hit: "));
       return Entry;
     }
 
     // Vacant - add new entry
     if (Entry.Key == VacantMarker) {
       Entry.Key = Key;
+      // DEBUG(Entry.dump("Adding new entry: "));
       return Entry;
     }
 
@@ -356,13 +391,23 @@ private:
     }
 
     // Conflict - create the next level
+    // DEBUG(Entry.dump("Creating new level: "));
+
     MapEntry *NextLevelTbl = new (Alloc, 0) MapEntry[IncSize];
+    // DEBUG(
+    //     reportNumber("Newly allocated level: 0x", uint64_t(NextLevelTbl),
+    //     16));
     uint64_t CurEntrySelector = Entry.Key / InitialSize;
     for (int I = 0; I < CurLevel; ++I)
       CurEntrySelector /= IncSize;
     CurEntrySelector = CurEntrySelector % IncSize;
     NextLevelTbl[CurEntrySelector] = Entry;
     Entry.Key = reinterpret_cast<uint64_t>(NextLevelTbl) | FollowUpTableMarker;
+    assert((NextLevelTbl[CurEntrySelector].Key & ~FollowUpTableMarker) !=
+               uint64_t(Entries),
+           "circular reference created!\n");
+    // DEBUG(NextLevelTbl[CurEntrySelector].dump("New level entry: "));
+    // DEBUG(Entry.dump("Updated old entry: "));
     return getEntry(NextLevelTbl, Key, Remainder, Alloc, CurLevel + 1);
   }
 
