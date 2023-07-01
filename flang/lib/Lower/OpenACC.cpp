@@ -1379,6 +1379,9 @@ static void genACCDataOp(Fortran::lower::AbstractConverter &converter,
   bool addAsyncAttr = false;
   bool addWaitAttr = false;
 
+  bool hasDefaultNone = false;
+  bool hasDefaultPresent = false;
+
   fir::FirOpBuilder &builder = converter.getFirOpBuilder();
 
   // Lower clauses values mapped to operands.
@@ -1466,6 +1469,12 @@ static void genACCDataOp(Fortran::lower::AbstractConverter &converter,
                    std::get_if<Fortran::parser::AccClause::Wait>(&clause.u)) {
       genWaitClause(converter, waitClause, waitOperands, waitDevnum,
                     addWaitAttr, stmtCtx);
+    } else if(const auto *defaultClause = 
+                  std::get_if<Fortran::parser::AccClause::Default>(&clause.u)) {
+      if ((defaultClause->v).v == llvm::acc::DefaultValue::ACC_Default_none)
+        hasDefaultNone = true;
+      else if ((defaultClause->v).v == llvm::acc::DefaultValue::ACC_Default_present)
+        hasDefaultPresent = true;
     }
   }
 
@@ -1483,6 +1492,11 @@ static void genACCDataOp(Fortran::lower::AbstractConverter &converter,
 
   dataOp.setAsyncAttr(addAsyncAttr);
   dataOp.setWaitAttr(addWaitAttr);
+
+  if (hasDefaultNone)
+    dataOp.setDefaultAttr(mlir::acc::ClauseDefaultValue::None);
+  if (hasDefaultPresent)
+    dataOp.setDefaultAttr(mlir::acc::ClauseDefaultValue::Present);
 
   auto insPt = builder.saveInsertionPoint();
   builder.setInsertionPointAfter(dataOp);
@@ -1733,7 +1747,7 @@ genACCExitDataOp(Fortran::lower::AbstractConverter &converter,
   fir::FirOpBuilder &builder = converter.getFirOpBuilder();
 
   // Lower clauses values mapped to operands.
-  // Keep track of each group of operands separatly as clauses can appear
+  // Keep track of each group of operands separately as clauses can appear
   // more than once.
   for (const Fortran::parser::AccClause &clause : accClauseList.v) {
     mlir::Location clauseLocation = converter.genLocation(clause.source);
@@ -1815,7 +1829,7 @@ genACCInitShutdownOp(Fortran::lower::AbstractConverter &converter,
   Fortran::lower::StatementContext stmtCtx;
 
   // Lower clauses values mapped to operands.
-  // Keep track of each group of operands separatly as clauses can appear
+  // Keep track of each group of operands separately as clauses can appear
   // more than once.
   for (const Fortran::parser::AccClause &clause : accClauseList.v) {
     mlir::Location clauseLocation = converter.genLocation(clause.source);
@@ -1865,7 +1879,7 @@ genACCUpdateOp(Fortran::lower::AbstractConverter &converter,
   fir::FirOpBuilder &builder = converter.getFirOpBuilder();
 
   // Lower clauses values mapped to operands.
-  // Keep track of each group of operands separatly as clauses can appear
+  // Keep track of each group of operands separately as clauses can appear
   // more than once.
   for (const Fortran::parser::AccClause &clause : accClauseList.v) {
     mlir::Location clauseLocation = converter.genLocation(clause.source);
@@ -2009,7 +2023,7 @@ static void genACC(Fortran::lower::AbstractConverter &converter,
   }
 
   // Lower clauses values mapped to operands.
-  // Keep track of each group of operands separatly as clauses can appear
+  // Keep track of each group of operands separately as clauses can appear
   // more than once.
   for (const Fortran::parser::AccClause &clause : accClauseList.v) {
     mlir::Location clauseLocation = converter.genLocation(clause.source);
