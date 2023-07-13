@@ -2434,11 +2434,12 @@ static SDValue foldSelectWithIdentityConstant(SDNode *N, SelectionDAG &DAG,
   if (N1.getOpcode() != ISD::VSELECT || !N1.hasOneUse())
     return SDValue();
 
-  // We can't hoist div/rem because of immediate UB (not speculatable).
-  unsigned Opcode = N->getOpcode();
-  if (!DAG.isSafeToSpeculativelyExecute(Opcode))
+  // We can't hoist all instructions because of immediate UB (not speculatable).
+  // For example div/rem by zero.
+  if (!DAG.isSafeToSpeculativelyExecuteNode(N))
     return SDValue();
 
+  unsigned Opcode = N->getOpcode();
   EVT VT = N->getValueType(0);
   SDValue Cond = N1.getOperand(0);
   SDValue TVal = N1.getOperand(1);
@@ -17033,6 +17034,10 @@ SDValue DAGCombiner::visitFP_ROUND(SDNode *N) {
   if (N0.getOpcode() == ISD::FP_ROUND) {
     const bool NIsTrunc = N->getConstantOperandVal(1) == 1;
     const bool N0IsTrunc = N0.getConstantOperandVal(1) == 1;
+
+    // Avoid folding legal fp_rounds into non-legal ones.
+    if (!hasOperation(ISD::FP_ROUND, VT))
+      return SDValue();
 
     // Skip this folding if it results in an fp_round from f80 to f16.
     //

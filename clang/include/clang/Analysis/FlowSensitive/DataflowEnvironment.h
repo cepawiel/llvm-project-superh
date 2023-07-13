@@ -28,6 +28,7 @@
 #include "clang/Analysis/FlowSensitive/Value.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseSet.h"
+#include "llvm/ADT/MapVector.h"
 #include "llvm/Support/Compiler.h"
 #include "llvm/Support/ErrorHandling.h"
 #include <memory>
@@ -543,15 +544,11 @@ public:
 
   /// Record a fact that must be true if this point in the program is reached.
   void addToFlowCondition(const Formula &);
-  /// Deprecated: Use Formula version instead.
-  void addToFlowCondition(BoolValue &Val);
 
   /// Returns true if the formula is always true when this point is reached.
   /// Returns false if the formula may be false, or if the flow condition isn't
   /// sufficiently precise to prove that it is true.
   bool flowConditionImplies(const Formula &) const;
-  /// Deprecated: Use Formula version instead.
-  bool flowConditionImplies(BoolValue &Val) const;
 
   /// Returns the `DeclContext` of the block being analysed, if any. Otherwise,
   /// returns null.
@@ -634,8 +631,9 @@ private:
   // block.
   llvm::DenseMap<const ValueDecl *, StorageLocation *> DeclToLoc;
   llvm::DenseMap<const Expr *, StorageLocation *> ExprToLoc;
-
-  llvm::DenseMap<const StorageLocation *, Value *> LocToVal;
+  // We preserve insertion order so that join/widen process values in
+  // deterministic sequence. This in turn produces deterministic SAT formulas.
+  llvm::MapVector<const StorageLocation *, Value *> LocToVal;
 
   // Maps locations of struct members to symbolic values of the structs that own
   // them and the decls of the struct members.
