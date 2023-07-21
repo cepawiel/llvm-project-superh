@@ -262,6 +262,7 @@ Non-comprehensive list of changes in this release
 - Added ``__builtin_elementwise_nearbyint`` for floating point
   types. This allows access to ``llvm.nearbyint`` for arbitrary
   floating-point and vector of floating-point types.
+- Clang AST matcher now matches concept declarations with `conceptDecl`.
 
 New Compiler Flags
 ------------------
@@ -656,6 +657,9 @@ Bug Fixes in This Version
   (`#63169 <https://github.com/llvm/llvm-project/issues/63169>_`)
 - Fix crash when casting an object to an array type.
   (`#63758 <https://github.com/llvm/llvm-project/issues/63758>_`)
+- Fixed false positive error diagnostic observed from mixing ``asm goto`` with
+  ``__attribute__((cleanup()))`` variables falsely warning that jumps to
+  non-targets would skip cleanup.
 
 Bug Fixes to Compiler Builtins
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -886,6 +890,9 @@ RISC-V Support
 
 CUDA/HIP Language Changes
 ^^^^^^^^^^^^^^^^^^^^^^^^^
+- Clang has been updated to align its default language standard for CUDA/HIP with
+  that of C++. The standard has now been enhanced to gnu++17, supplanting the
+  previously used c++14.
 
 CUDA Support
 ^^^^^^^^^^^^
@@ -940,6 +947,8 @@ AST Matchers
 
 - The ``hasBody`` matcher now matches coroutine body nodes in
   ``CoroutineBodyStmts``.
+  
+- Add ``arrayInitIndexExpr`` and ``arrayInitLoopExpr`` matchers.
 
 clang-format
 ------------
