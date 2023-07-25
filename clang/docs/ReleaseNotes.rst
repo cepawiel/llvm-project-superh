@@ -274,6 +274,11 @@ New Compiler Flags
 - ``-fcaret-diagnostics-max-lines=`` has been added as a driver options, which
   lets users control the maximum number of source lines printed for a
   caret diagnostic.
+- ``-fkeep-persistent-storage-variables`` has been implemented to keep all
+  variables that have a persistent storage duration—including global, static
+  and thread-local variables—to guarantee that they can be directly addressed.
+  Since this inhibits the merging of the affected variables, the number of
+  individual relocations in the program will generally increase.
 
 Deprecated Compiler Flags
 -------------------------
@@ -855,6 +860,7 @@ X86 Support
   * Support intrinsic of ``_mm(256)_dpwsud(s)_epi32``.
   * Support intrinsic of ``_mm(256)_dpwusd(s)_epi32``.
   * Support intrinsic of ``_mm(256)_dpwuud(s)_epi32``.
+- ``-march=graniterapids-d`` is now supported.
 
 Arm and AArch64 Support
 ^^^^^^^^^^^^^^^^^^^^^^^
@@ -988,6 +994,11 @@ clang-format
 - Add ``KeepEmptyLinesAtEOF`` to keep empty lines at end of file.
 - Add ``RemoveParentheses`` to remove redundant parentheses.
 - Add ``TypeNames`` to treat listed non-keyword identifiers as type names.
+- Add ``AlignConsecutiveShortCaseStatements`` which can be used to align case
+  labels in conjunction with ``AllowShortCaseLabelsOnASingleLine``.
+- Add ``SpacesInParens`` style with ``SpacesInParensOptions`` to replace
+  ``SpacesInConditionalStatement``, ``SpacesInCStyleCastParentheses``,
+  ``SpaceInEmptyParentheses``, and ``SpacesInParentheses``.
 
 libclang
 --------
