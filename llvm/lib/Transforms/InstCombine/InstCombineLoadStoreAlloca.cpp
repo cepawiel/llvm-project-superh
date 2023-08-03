@@ -1501,8 +1501,7 @@ Instruction *InstCombinerImpl::visitStoreInst(StoreInst &SI) {
     --BBI;
     // Don't count debug info directives, lest they affect codegen,
     // and we skip pointer-to-pointer bitcasts, which are NOPs.
-    if (BBI->isDebugOrPseudoInst() ||
-        (isa<BitCastInst>(BBI) && BBI->getType()->isPointerTy())) {
+    if (BBI->isDebugOrPseudoInst()) {
       ScanInsts++;
       continue;
     }
@@ -1560,10 +1559,8 @@ Instruction *InstCombinerImpl::visitStoreInst(StoreInst &SI) {
     // Remove all instructions after the marker and handle dead blocks this
     // implies.
     SmallVector<BasicBlock *> Worklist;
-    bool Changed = handleUnreachableFrom(SI.getNextNode(), Worklist);
-    Changed |= handlePotentiallyDeadBlocks(Worklist);
-    if (Changed)
-      return &SI;
+    handleUnreachableFrom(SI.getNextNode(), Worklist);
+    handlePotentiallyDeadBlocks(Worklist);
     return nullptr;
   }
 
@@ -1625,8 +1622,7 @@ bool InstCombinerImpl::mergeStoreIntoSuccessor(StoreInst &SI) {
   if (OtherBr->isUnconditional()) {
     --BBI;
     // Skip over debugging info and pseudo probes.
-    while (BBI->isDebugOrPseudoInst() ||
-           (isa<BitCastInst>(BBI) && BBI->getType()->isPointerTy())) {
+    while (BBI->isDebugOrPseudoInst()) {
       if (BBI==OtherBB->begin())
         return false;
       --BBI;
