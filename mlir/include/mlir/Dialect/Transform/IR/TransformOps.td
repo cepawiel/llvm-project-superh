@@ -203,10 +203,14 @@ def ApplyConversionPatternsOp : TransformDialectOp<"apply_conversion_patterns",
                        OptionalAttr<StrArrayAttr>:$illegal_dialects,
                        UnitAttr:$partialConversion);
   let results = (outs);
-  let regions = (region VariadicRegion<MaxSizedRegion<1>>:$regions);
+  let regions = (region
+      MaxSizedRegion<1>:$patterns,
+      VariadicRegion<MaxSizedRegion<1>>:$default_type_converter_region);
 
   let assemblyFormat = [{
-    `to` $target $regions attr-dict `:` type($target)
+    `to` $target $patterns
+    (`with` `type_converter` $default_type_converter_region^)?
+    attr-dict `:` type($target)
   }];
   let hasVerifier = 1;
 
@@ -221,17 +225,32 @@ def ApplyConversionPatternsOp : TransformDialectOp<"apply_conversion_patterns",
   ];
 
   let extraClassDeclaration = [{
-    ::mlir::Region &getPatterns() {
-      return getRegion(0);
-    }
-
     ::mlir::transform::TypeConverterBuilderOpInterface getDefaultTypeConverter() {
-      if (getNumRegions() < 2)
+      if (getDefaultTypeConverterRegion().size() == 0)
         return {};
       return ::llvm::cast<::mlir::transform::TypeConverterBuilderOpInterface>(
-          &getRegion(1).front().front());
+          &getDefaultTypeConverterRegion()[0].front().front());
     }
   }];
+}
+
+def ApplyToLLVMConversionPatternsOp : Op<Transform_Dialect,
+    "apply_conversion_patterns.dialect_to_llvm",
+    [DeclareOpInterfaceMethods<ConversionPatternDescriptorOpInterface,
+                               ["verifyTypeConverter"]>]> {
+  let description = [{
+    Collects patterns that convert ops from the specified dialect to LLVM
+    dialect ops. These patterns require an "LLVMTypeConverter".
+
+    Note: Only dialects that implement the `ConvertToLLVMPatternInterface` are
+    supported. Any conversion target modifications by interface implementations
+    are currently ignored. The conversion target is fully specified by the
+    enclosing "apply_conversion_patterns" op.
+  }];
+
+  let arguments = (ins StrAttr:$dialect_name);
+  let assemblyFormat = "$dialect_name attr-dict";
+  let hasVerifier = 1;
 }
 
 def ApplyDeadCodeEliminationOp : TransformDialectOp<"apply_dce",

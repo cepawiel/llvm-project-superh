@@ -3848,39 +3848,12 @@ bool Sema::CheckLoongArchBuiltinFunctionCall(const TargetInfo &TI,
   default:
     break;
   case LoongArch::BI__builtin_loongarch_cacop_d:
-    if (!TI.hasFeature("64bit"))
-      return Diag(TheCall->getBeginLoc(),
-                  diag::err_loongarch_builtin_requires_la64)
-             << TheCall->getSourceRange();
-    [[fallthrough]];
   case LoongArch::BI__builtin_loongarch_cacop_w: {
-    if (BuiltinID == LoongArch::BI__builtin_loongarch_cacop_w &&
-        !TI.hasFeature("32bit"))
-      return Diag(TheCall->getBeginLoc(),
-                  diag::err_loongarch_builtin_requires_la32)
-             << TheCall->getSourceRange();
     SemaBuiltinConstantArgRange(TheCall, 0, 0, llvm::maxUIntN(5));
     SemaBuiltinConstantArgRange(TheCall, 2, llvm::minIntN(12),
                                 llvm::maxIntN(12));
     break;
   }
-  case LoongArch::BI__builtin_loongarch_crc_w_b_w:
-  case LoongArch::BI__builtin_loongarch_crc_w_h_w:
-  case LoongArch::BI__builtin_loongarch_crc_w_w_w:
-  case LoongArch::BI__builtin_loongarch_crc_w_d_w:
-  case LoongArch::BI__builtin_loongarch_crcc_w_b_w:
-  case LoongArch::BI__builtin_loongarch_crcc_w_h_w:
-  case LoongArch::BI__builtin_loongarch_crcc_w_w_w:
-  case LoongArch::BI__builtin_loongarch_crcc_w_d_w:
-  case LoongArch::BI__builtin_loongarch_iocsrrd_d:
-  case LoongArch::BI__builtin_loongarch_iocsrwr_d:
-  case LoongArch::BI__builtin_loongarch_asrtle_d:
-  case LoongArch::BI__builtin_loongarch_asrtgt_d:
-    if (!TI.hasFeature("64bit"))
-      return Diag(TheCall->getBeginLoc(),
-                  diag::err_loongarch_builtin_requires_la64)
-             << TheCall->getSourceRange();
-    break;
   case LoongArch::BI__builtin_loongarch_break:
   case LoongArch::BI__builtin_loongarch_dbar:
   case LoongArch::BI__builtin_loongarch_ibar:
@@ -3888,35 +3861,16 @@ bool Sema::CheckLoongArchBuiltinFunctionCall(const TargetInfo &TI,
     // Check if immediate is in [0, 32767].
     return SemaBuiltinConstantArgRange(TheCall, 0, 0, 32767);
   case LoongArch::BI__builtin_loongarch_csrrd_w:
+  case LoongArch::BI__builtin_loongarch_csrrd_d:
     return SemaBuiltinConstantArgRange(TheCall, 0, 0, 16383);
   case LoongArch::BI__builtin_loongarch_csrwr_w:
+  case LoongArch::BI__builtin_loongarch_csrwr_d:
     return SemaBuiltinConstantArgRange(TheCall, 1, 0, 16383);
   case LoongArch::BI__builtin_loongarch_csrxchg_w:
-    return SemaBuiltinConstantArgRange(TheCall, 2, 0, 16383);
-  case LoongArch::BI__builtin_loongarch_csrrd_d:
-    if (!TI.hasFeature("64bit"))
-      return Diag(TheCall->getBeginLoc(),
-                  diag::err_loongarch_builtin_requires_la64)
-             << TheCall->getSourceRange();
-    return SemaBuiltinConstantArgRange(TheCall, 0, 0, 16383);
-  case LoongArch::BI__builtin_loongarch_csrwr_d:
-    if (!TI.hasFeature("64bit"))
-      return Diag(TheCall->getBeginLoc(),
-                  diag::err_loongarch_builtin_requires_la64)
-             << TheCall->getSourceRange();
-    return SemaBuiltinConstantArgRange(TheCall, 1, 0, 16383);
   case LoongArch::BI__builtin_loongarch_csrxchg_d:
-    if (!TI.hasFeature("64bit"))
-      return Diag(TheCall->getBeginLoc(),
-                  diag::err_loongarch_builtin_requires_la64)
-             << TheCall->getSourceRange();
     return SemaBuiltinConstantArgRange(TheCall, 2, 0, 16383);
   case LoongArch::BI__builtin_loongarch_lddir_d:
   case LoongArch::BI__builtin_loongarch_ldpte_d:
-    if (!TI.hasFeature("64bit"))
-      return Diag(TheCall->getBeginLoc(),
-                  diag::err_loongarch_builtin_requires_la64)
-             << TheCall->getSourceRange();
     return SemaBuiltinConstantArgRange(TheCall, 1, 0, 31);
   case LoongArch::BI__builtin_loongarch_movfcsr2gr:
   case LoongArch::BI__builtin_loongarch_movgr2fcsr:
@@ -6761,8 +6715,8 @@ void Sema::CheckArgAlignment(SourceLocation Loc, NamedDecl *FDecl,
 }
 
 /// Handles the checks for format strings, non-POD arguments to vararg
-/// functions, NULL arguments passed to non-NULL parameters, and diagnose_if
-/// attributes.
+/// functions, NULL arguments passed to non-NULL parameters, diagnose_if
+/// attributes and AArch64 SME attributes.
 void Sema::checkCall(NamedDecl *FDecl, const FunctionProtoType *Proto,
                      const Expr *ThisArg, ArrayRef<const Expr *> Args,
                      bool IsMemberFunction, SourceLocation Loc,
@@ -6842,6 +6796,36 @@ void Sema::checkCall(NamedDecl *FDecl, const FunctionProtoType *Proto,
         CheckArgAlignment(Arg->getExprLoc(), FDecl, std::to_string(ArgIdx + 1),
                           ArgTy, ParamTy);
       }
+    }
+
+    // If the callee has an AArch64 SME attribute to indicate that it is an
+    // __arm_streaming function, then the caller requires SME to be available.
+    FunctionProtoType::ExtProtoInfo ExtInfo = Proto->getExtProtoInfo();
+    if (ExtInfo.AArch64SMEAttributes & FunctionType::SME_PStateSMEnabledMask) {
+      if (auto *CallerFD = dyn_cast<FunctionDecl>(CurContext)) {
+        llvm::StringMap<bool> CallerFeatureMap;
+        Context.getFunctionFeatureMap(CallerFeatureMap, CallerFD);
+        if (!CallerFeatureMap.contains("sme"))
+          Diag(Loc, diag::err_sme_call_in_non_sme_target);
+      } else if (!Context.getTargetInfo().hasFeature("sme")) {
+        Diag(Loc, diag::err_sme_call_in_non_sme_target);
+      }
+    }
+
+    // If the callee uses AArch64 SME ZA state but the caller doesn't define
+    // any, then this is an error.
+    if (ExtInfo.AArch64SMEAttributes & FunctionType::SME_PStateZASharedMask) {
+      bool CallerHasZAState = false;
+      if (const auto *CallerFD = dyn_cast<FunctionDecl>(CurContext)) {
+        if (CallerFD->hasAttr<ArmNewZAAttr>())
+          CallerHasZAState = true;
+        else if (const auto *FPT = CallerFD->getType()->getAs<FunctionProtoType>())
+          CallerHasZAState = FPT->getExtProtoInfo().AArch64SMEAttributes &
+                             FunctionType::SME_PStateZASharedMask;
+      }
+
+      if (!CallerHasZAState)
+        Diag(Loc, diag::err_sme_za_call_no_za_state);
     }
   }
 
