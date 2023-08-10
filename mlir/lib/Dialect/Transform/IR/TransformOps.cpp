@@ -9,6 +9,7 @@
 #include "mlir/Dialect/Transform/IR/TransformOps.h"
 
 #include "mlir/Conversion/ConvertToLLVM/ToLLVMInterface.h"
+#include "mlir/Conversion/LLVMCommon/ConversionTarget.h"
 #include "mlir/Conversion/LLVMCommon/TypeConverter.h"
 #include "mlir/Dialect/Transform/IR/MatchInterfaces.h"
 #include "mlir/Dialect/Transform/IR/TransformAttrs.h"
@@ -85,7 +86,7 @@ ensurePayloadIsSeparateFromTransform(transform::TransformOpInterface transform,
 // AlternativesOp
 //===----------------------------------------------------------------------===//
 
-OperandRange transform::AlternativesOp::getSuccessorEntryOperands(
+OperandRange transform::AlternativesOp::getEntrySuccessorOperands(
     std::optional<unsigned> index) {
   if (index && getOperation()->getNumOperands() == 1)
     return getOperation()->getOperands();
@@ -94,8 +95,7 @@ OperandRange transform::AlternativesOp::getSuccessorEntryOperands(
 }
 
 void transform::AlternativesOp::getSuccessorRegions(
-    std::optional<unsigned> index, ArrayRef<Attribute> operands,
-    SmallVectorImpl<RegionSuccessor> &regions) {
+    std::optional<unsigned> index, SmallVectorImpl<RegionSuccessor> &regions) {
   for (Region &alternative : llvm::drop_begin(
            getAlternatives(), index.has_value() ? *index + 1 : 0)) {
     regions.emplace_back(&alternative, !getOperands().empty()
@@ -499,7 +499,7 @@ DiagnosedSilenceableFailure transform::ApplyConversionPatternsOp::apply(
     defaultTypeConverter = typeConverterBuilder.getTypeConverter();
 
   // Configure conversion target.
-  ConversionTarget conversionTarget(*ctx);
+  ConversionTarget conversionTarget(*getContext());
   if (getLegalOps())
     for (Attribute attr : cast<ArrayAttr>(*getLegalOps()))
       conversionTarget.addLegalOp(
@@ -613,9 +613,6 @@ LogicalResult transform::ApplyConversionPatternsOp::verify() {
       }
     }
   }
-  if (!getLegalOps() && !getIllegalOps() && !getLegalDialects() &&
-      !getIllegalDialects())
-    return emitOpError() << "conversion target is not specified";
   return success();
 }
 
@@ -1162,8 +1159,7 @@ void transform::ForeachOp::getEffects(
 }
 
 void transform::ForeachOp::getSuccessorRegions(
-    std::optional<unsigned> index, ArrayRef<Attribute> operands,
-    SmallVectorImpl<RegionSuccessor> &regions) {
+    std::optional<unsigned> index, SmallVectorImpl<RegionSuccessor> &regions) {
   Region *bodyRegion = &getBody();
   if (!index) {
     regions.emplace_back(bodyRegion, bodyRegion->getArguments());
@@ -1177,7 +1173,7 @@ void transform::ForeachOp::getSuccessorRegions(
 }
 
 OperandRange
-transform::ForeachOp::getSuccessorEntryOperands(std::optional<unsigned> index) {
+transform::ForeachOp::getEntrySuccessorOperands(std::optional<unsigned> index) {
   // The iteration variable op handle is mapped to a subset (one op to be
   // precise) of the payload ops of the ForeachOp operand.
   assert(index && *index == 0 && "unexpected region index");
@@ -2182,7 +2178,7 @@ void transform::SequenceOp::getEffects(
   getPotentialTopLevelEffects(effects);
 }
 
-OperandRange transform::SequenceOp::getSuccessorEntryOperands(
+OperandRange transform::SequenceOp::getEntrySuccessorOperands(
     std::optional<unsigned> index) {
   assert(index && *index == 0 && "unexpected region index");
   if (getOperation()->getNumOperands() > 0)
@@ -2192,11 +2188,10 @@ OperandRange transform::SequenceOp::getSuccessorEntryOperands(
 }
 
 void transform::SequenceOp::getSuccessorRegions(
-    std::optional<unsigned> index, ArrayRef<Attribute> operands,
-    SmallVectorImpl<RegionSuccessor> &regions) {
+    std::optional<unsigned> index, SmallVectorImpl<RegionSuccessor> &regions) {
   if (!index) {
     Region *bodyRegion = &getBody();
-    regions.emplace_back(bodyRegion, !operands.empty()
+    regions.emplace_back(bodyRegion, getNumOperands() != 0
                                          ? bodyRegion->getArguments()
                                          : Block::BlockArgListType());
     return;
