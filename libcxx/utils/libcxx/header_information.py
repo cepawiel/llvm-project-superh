@@ -15,10 +15,8 @@ lit_header_restrictions = {
     "coroutine": "// UNSUPPORTED: c++03, c++11, c++14, c++17",
     "cwchar": "// UNSUPPORTED: no-wide-characters",
     "cwctype": "// UNSUPPORTED: no-wide-characters",
-    "experimental/algorithm": "// UNSUPPORTED: c++03",
     "experimental/deque": "// UNSUPPORTED: c++03",
     "experimental/forward_list": "// UNSUPPORTED: c++03",
-    "experimental/functional": "// UNSUPPORTED: c++03",
     "experimental/iterator": "// UNSUPPORTED: c++03",
     "experimental/list": "// UNSUPPORTED: c++03",
     "experimental/map": "// UNSUPPORTED: c++03",
@@ -112,7 +110,7 @@ def is_header(file):
         and file.name != "libcxx.imp"
     )
 
-libcxx_root = pathlib.Path(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))))
+libcxx_root = pathlib.Path(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 include = pathlib.Path(os.path.join(libcxx_root, "include"))
 test = pathlib.Path(os.path.join(libcxx_root, "test"))
 assert libcxx_root.exists()
