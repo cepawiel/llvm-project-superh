@@ -92,6 +92,10 @@ C++2c Feature Support
 
 Resolutions to C++ Defect Reports
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+- Implemented `CWG1473 <https://wg21.link/CWG1473>`_ which allows spaces after ``operator""``.
+  Clang used to err on the lack of space when the literal suffix identifier was invalid in
+  all the language modes, which contradicted the deprecation of the whitespaces.
+  Also turn on ``-Wdeprecated-literal-operator`` by default in all the language modes.
 
 C Language Changes
 ------------------
@@ -144,7 +148,14 @@ Bug Fixes in This Version
   module may end up with members associated with the wrong declaration of the
   class, which can result in miscompiles in some cases.
 - Fix crash on use of a variadic overloaded operator.
-  (`#42535 <https://github.com/llvm/llvm-project/issues/42535>`_)
+  (`#42535 <https://github.com/llvm/llvm-project/issues/42535>_`)
+- Fix a hang on valid C code passing a function type as an argument to
+  ``typeof`` to form a function declaration.
+  (`#64713 <https://github.com/llvm/llvm-project/issues/64713>_`)
+- Clang now respects ``-fwrapv`` and ``-ftrapv`` for ``__builtin_abs`` and
+  ``abs`` builtins.
+  (`#45129 <https://github.com/llvm/llvm-project/issues/45129>`_,
+  `#45794 <https://github.com/llvm/llvm-project/issues/45794>`_)
 
 Bug Fixes to Compiler Builtins
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -173,6 +184,9 @@ Bug Fixes to C++ Support
 - Clang emits an error on substitution failure within lambda body inside a
   requires-expression. This fixes:
   (`#64138 <https://github.com/llvm/llvm-project/issues/64138>`_).
+
+- Update ``FunctionDeclBitfields.NumFunctionDeclBits``. This fixes:
+  (`#64171 <https://github.com/llvm/llvm-project/issues/64171>`_).
 
 Bug Fixes to AST Handling
 ^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -273,6 +287,9 @@ Static Analyzer
 
 Sanitizers
 ----------
+- ``-fsanitize=signed-integer-overflow`` now instruments ``__builtin_abs`` and
+  ``abs`` builtins.
+
 
 Python Binding Changes
 ----------------------
