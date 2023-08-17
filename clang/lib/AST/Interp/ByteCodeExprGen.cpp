@@ -1824,7 +1824,7 @@ bool ByteCodeExprGen<Emitter>::VisitBuiltinCallExpr(const CallExpr *E) {
       return false;
   }
 
-  if (!this->emitCallBI(Func, E))
+  if (!this->emitCallBI(Func, E, E))
     return false;
 
   QualType ReturnType = E->getCallReturnType(Ctx.getASTContext());
@@ -1950,6 +1950,17 @@ bool ByteCodeExprGen<Emitter>::VisitCXXNullPtrLiteralExpr(
     return true;
 
   return this->emitNullPtr(E);
+}
+
+template <class Emitter>
+bool ByteCodeExprGen<Emitter>::VisitGNUNullExpr(const GNUNullExpr *E) {
+  if (DiscardResult)
+    return true;
+
+  assert(E->getType()->isIntegerType());
+
+  PrimType T = classifyPrim(E->getType());
+  return this->emitZero(T, E);
 }
 
 template <class Emitter>
