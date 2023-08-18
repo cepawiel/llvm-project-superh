@@ -92,7 +92,7 @@ enum class DWARFVerify : uint8_t {
   All = Input | Output,
   Auto = Input | OutputOnValidInput,
 #if !defined(NDEBUG) || defined(EXPENSIVE_CHECKS)
-  Default = None // FIXME: Auto
+  Default = Auto
 #else
   Default = None
 #endif
@@ -595,7 +595,7 @@ getOutputFileName(StringRef InputFile, const DsymutilOptions &Options) {
   return OutputLocation(std::string(Path.str()), ResourceDir);
 }
 
-int main(int argc, char **argv) {
+int dsymutil_main(int argc, char **argv, const llvm::ToolContext &) {
   InitLLVM X(argc, argv);
 
   // Parse arguments.
