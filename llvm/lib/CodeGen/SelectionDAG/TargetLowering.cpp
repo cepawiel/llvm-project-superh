@@ -1688,22 +1688,6 @@ bool TargetLowering::SimplifyDemandedBits(
       Known.Zero.setBitsFrom(1);
     break;
   }
-  case ISD::SMIN: {
-    SDValue Op0 = Op.getOperand(0);
-    SDValue Op1 = Op.getOperand(1);
-    // If we're only wanting the signbit, then we can simplify to OR node.
-    if (OriginalDemandedBits.isSignMask())
-      return TLO.CombineTo(Op, TLO.DAG.getNode(ISD::OR, dl, VT, Op0, Op1));
-    break;
-  }
-  case ISD::SMAX: {
-    SDValue Op0 = Op.getOperand(0);
-    SDValue Op1 = Op.getOperand(1);
-    // If we're only wanting the signbit, then we can simplify to AND node.
-    if (OriginalDemandedBits.isSignMask())
-      return TLO.CombineTo(Op, TLO.DAG.getNode(ISD::AND, dl, VT, Op0, Op1));
-    break;
-  }
   case ISD::SHL: {
     SDValue Op0 = Op.getOperand(0);
     SDValue Op1 = Op.getOperand(1);
@@ -1886,15 +1870,15 @@ bool TargetLowering::SimplifyDemandedBits(
 
       // Narrow shift to lower half - similar to ShrinkDemandedOp.
       // (srl i64:x, K) -> (i64 zero_extend (srl (i32 (trunc i64:x)), K))
-      if ((BitWidth % 2) == 0 && !VT.isVector() &&
-          ((InDemandedMask.countLeadingZeros() >= (BitWidth / 2)) ||
-           TLO.DAG.MaskedValueIsZero(
-               Op0, APInt::getHighBitsSet(BitWidth, BitWidth / 2)))) {
+      if ((BitWidth % 2) == 0 && !VT.isVector()) {
+        APInt HiBits = APInt::getHighBitsSet(BitWidth, BitWidth / 2);
         EVT HalfVT = EVT::getIntegerVT(*TLO.DAG.getContext(), BitWidth / 2);
         if (isNarrowingProfitable(VT, HalfVT) &&
             isTypeDesirableForOp(ISD::SRL, HalfVT) &&
             isTruncateFree(VT, HalfVT) && isZExtFree(HalfVT, VT) &&
-            (!TLO.LegalOperations() || isOperationLegal(ISD::SRL, VT))) {
+            (!TLO.LegalOperations() || isOperationLegal(ISD::SRL, VT)) &&
+            ((InDemandedMask.countLeadingZeros() >= (BitWidth / 2)) ||
+             TLO.DAG.MaskedValueIsZero(Op0, HiBits))) {
           SDValue NewOp = TLO.DAG.getNode(ISD::TRUNCATE, dl, HalfVT, Op0);
           SDValue NewShiftAmt = TLO.DAG.getShiftAmountConstant(
               ShAmt, HalfVT, dl, TLO.LegalTypes());
@@ -2155,7 +2139,7 @@ bool TargetLowering::SimplifyDemandedBits(
     SDValue Op0 = Op.getOperand(0);
     SDValue Op1 = Op.getOperand(1);
     // If we're only wanting the msb, then we can simplify to AND node.
-    if (OriginalDemandedBits.isSignMask())
+    if (DemandedBits.isSignMask())
       return TLO.CombineTo(Op, TLO.DAG.getNode(ISD::AND, dl, VT, Op0, Op1));
     // Check if one arg is always less than (or equal) to the other arg.
     KnownBits Known0 = TLO.DAG.computeKnownBits(Op0, DemandedElts, Depth + 1);
@@ -2171,7 +2155,7 @@ bool TargetLowering::SimplifyDemandedBits(
     SDValue Op0 = Op.getOperand(0);
     SDValue Op1 = Op.getOperand(1);
     // If we're only wanting the msb, then we can simplify to OR node.
-    if (OriginalDemandedBits.isSignMask())
+    if (DemandedBits.isSignMask())
       return TLO.CombineTo(Op, TLO.DAG.getNode(ISD::OR, dl, VT, Op0, Op1));
     // Check if one arg is always greater than (or equal) to the other arg.
     KnownBits Known0 = TLO.DAG.computeKnownBits(Op0, DemandedElts, Depth + 1);

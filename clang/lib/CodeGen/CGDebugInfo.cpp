@@ -419,8 +419,9 @@ llvm::DIFile *CGDebugInfo::getOrCreateFile(SourceLocation Loc) {
       return cast<llvm::DIFile>(V);
   }
 
+  // Put Checksum at a scope where it will persist past the createFile call.
+  SmallString<64> Checksum;
   if (!CSInfo) {
-    SmallString<64> Checksum;
     std::optional<llvm::DIFile::ChecksumKind> CSKind =
       computeChecksum(FID, Checksum);
     if (CSKind)
