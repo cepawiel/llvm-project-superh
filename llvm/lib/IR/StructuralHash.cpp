@@ -20,9 +20,9 @@ namespace {
 // llvm/lib/Transforms/Utils/FunctionComparator.cpp
 
 class StructuralHashImpl {
-  hash_code Hash;
+  uint64_t Hash;
 
-  template <typename T> void hash(const T &V) { Hash = hash_combine(Hash, V); }
+  void hash(uint64_t V) { Hash = hashing::detail::hash_16_bytes(Hash, V); }
 
 public:
   StructuralHashImpl() : Hash(4) {}
@@ -48,7 +48,7 @@ public:
     if (F.isDeclaration())
       return;
 
-    hash(0x6acaa36bef8325c5ULL); // Function header
+    hash(0x62642d6b6b2d6b72); // Function header
 
     hash(F.isVarArg());
     hash(F.arg_size());
