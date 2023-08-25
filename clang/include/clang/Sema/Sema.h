@@ -7343,6 +7343,8 @@ public:
                                            CXXConversionDecl *Conv,
                                            Expr *Src);
 
+  sema::LambdaScopeInfo *RebuildLambdaScopeInfo(CXXMethodDecl *CallOperator);
+
   /// Check whether the given expression is a valid constraint expression.
   /// A diagnostic is emitted if it is not, false is returned, and
   /// PossibleNonPrimary will be set to true if the failure might be due to a
@@ -11552,6 +11554,11 @@ public:
   /// associated statement.
   StmtResult ActOnOpenMPSectionDirective(Stmt *AStmt, SourceLocation StartLoc,
                                          SourceLocation EndLoc);
+  /// Called on well-formed '\#pragma omp scope' after parsing of the
+  /// associated statement.
+  StmtResult ActOnOpenMPScopeDirective(ArrayRef<OMPClause *> Clauses,
+                                       Stmt *AStmt, SourceLocation StartLoc,
+                                       SourceLocation EndLoc);
   /// Called on well-formed '\#pragma omp single' after parsing of the
   /// associated statement.
   StmtResult ActOnOpenMPSingleDirective(ArrayRef<OMPClause *> Clauses,
