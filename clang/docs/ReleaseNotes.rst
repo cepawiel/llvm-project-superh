@@ -128,6 +128,13 @@ Removed Compiler Flags
 Attribute Changes in Clang
 --------------------------
 
+- When a non-variadic function is decorated with the ``format`` attribute,
+  Clang now checks that the format string would match the function's parameters'
+  types after default argument promotion. As a result, it's no longer an
+  automatic diagnostic to use parameters of types that the format style
+  supports but that are never the result of default argument promotion, such as
+  ``float``. (`#59824: <https://github.com/llvm/llvm-project/issues/59824>`_)
+
 Improvements to Clang's diagnostics
 -----------------------------------
 - Clang constexpr evaluator now prints template arguments when displaying
@@ -140,6 +147,9 @@ Improvements to Clang's diagnostics
   tautologies like ``x && !x`` and ``!x || x`` in expressions. This also
   makes ``-Winfinite-recursion`` diagnose more cases.
   (`#56035: <https://github.com/llvm/llvm-project/issues/56035>`_).
+- Clang constexpr evaluator now diagnoses compound assignment operators against
+  uninitialized variables as a read of uninitialized object.
+  (`#51536 <https://github.com/llvm/llvm-project/issues/51536>_`)
 
 Bug Fixes in This Version
 -------------------------
@@ -205,6 +215,10 @@ Bug Fixes to C++ Support
   by the constant interpreter when appearing as the operand
   of a binary comparision.
   (`#64923 <https://github.com/llvm/llvm-project/issues/64923>_``)
+
+- Fix a crash when an immediate invocation is not a constant expression
+  and appear in an implicit cast.
+  (`#64949 <https://github.com/llvm/llvm-project/issues/64949>`_).
 
 Bug Fixes to AST Handling
 ^^^^^^^^^^^^^^^^^^^^^^^^^
