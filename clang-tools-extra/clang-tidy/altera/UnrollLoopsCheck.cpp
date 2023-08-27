@@ -13,7 +13,7 @@
 #include "clang/AST/OperationKinds.h"
 #include "clang/AST/ParentMapContext.h"
 #include "clang/ASTMatchers/ASTMatchFinder.h"
-#include <math.h>
+#include <cmath>
 
 using namespace clang::ast_matchers;
 
@@ -171,7 +171,7 @@ bool UnrollLoopsCheck::hasLargeNumIterations(const Stmt *Statement,
   const Stmt *Initializer = ForLoop->getInit();
   const Expr *Conditional = ForLoop->getCond();
   const Expr *Increment = ForLoop->getInc();
-  int InitValue;
+  int InitValue = 0;
   // If the loop variable value isn't known, we can't know the loop bounds.
   if (const auto *InitDeclStatement = dyn_cast<DeclStmt>(Initializer)) {
     if (const auto *VariableDecl =
@@ -183,12 +183,12 @@ bool UnrollLoopsCheck::hasLargeNumIterations(const Stmt *Statement,
     }
   }
 
-  int EndValue;
+  int EndValue = 0;
   const auto *BinaryOp = cast<BinaryOperator>(Conditional);
   if (!extractValue(EndValue, BinaryOp, Context))
     return true;
 
-  double Iterations;
+  double Iterations = 0.0;
 
   // If increment is unary and not one of ++, --, we can't know the loop bounds.
   if (const auto *Op = dyn_cast<UnaryOperator>(Increment)) {
@@ -203,7 +203,7 @@ bool UnrollLoopsCheck::hasLargeNumIterations(const Stmt *Statement,
   // If increment is binary and not one of +, -, *, /, we can't know the loop
   // bounds.
   if (const auto *Op = dyn_cast<BinaryOperator>(Increment)) {
-    int ConstantValue;
+    int ConstantValue = 0;
     if (!extractValue(ConstantValue, Op, Context))
       return true;
     switch (Op->getOpcode()) {
@@ -246,7 +246,7 @@ bool UnrollLoopsCheck::extractValue(int &Value, const BinaryOperator *Op,
 }
 
 bool UnrollLoopsCheck::exprHasLargeNumIterations(const Expr *Expression,
-                                                 const ASTContext *Context) {
+                                                 const ASTContext *Context) const {
   Expr::EvalResult Result;
   if (Expression->EvaluateAsRValue(Result, *Context)) {
     if (!Result.Val.isInt())
