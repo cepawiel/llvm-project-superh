@@ -122,12 +122,18 @@ Modified Compiler Flags
 -----------------------
 
 * ``-Woverriding-t-option`` is renamed to ``-Woverriding-option``.
+* ``-Winterrupt-service-routine`` is renamed to ``-Wexcessive-regsave`` as a generalization
 
 Removed Compiler Flags
 -------------------------
 
 Attribute Changes in Clang
 --------------------------
+- On X86, a warning is now emitted if a function with ``__attribute__((no_caller_saved_registers))``
+  calls a function without ``__attribute__((no_caller_saved_registers))``, and is not compiled with
+  ``-mgeneral-regs-only``
+- On X86, a function with ``__attribute__((interrupt))`` can now call a function without
+  ``__attribute__((no_caller_saved_registers))`` provided that it is compiled with ``-mgeneral-regs-only``
 
 - When a non-variadic function is decorated with the ``format`` attribute,
   Clang now checks that the format string would match the function's parameters'
@@ -156,6 +162,9 @@ Improvements to Clang's diagnostics
   (`#64871: <https://github.com/llvm/llvm-project/issues/64871>`_).
   Also clang no longer emits false positive warnings about the output length of
   ``%g`` format specifier.
+- Clang now warns on unused variables declared and initialized in condition
+  expressions.
+  (`#61681: <https://github.com/llvm/llvm-project/issues/61681>`_)
 
 Bug Fixes in This Version
 -------------------------
