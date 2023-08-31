@@ -2271,9 +2271,6 @@ gentbl(
         strip_include_prefix = "lib/Target/" + target["name"],
         deps = [
             ":BinaryFormat",
-            # Depending on `:CodeGen` headers in this library is almost
-            # certainly a layering problem in numerous targets.
-            ":CodeGen",
             ":CodeGenTypes",
             ":DebugInfoCodeView",
             ":MC",
@@ -2797,6 +2794,7 @@ cc_library(
         ":DWARFLinker",
         ":DebugInfoDWARF",
         ":MC",
+        ":Object",
         ":Support",
         ":Target",
         ":TargetParser",
