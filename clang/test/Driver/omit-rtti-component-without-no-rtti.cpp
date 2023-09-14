@@ -1,9 +1,6 @@
 /// Ensure that -fexperimental-omit-vtable-rtti is only allowed if rtti is
 /// disabled.
 
-// UNSUPPORTED: system-windows
-
-// RUN: not %clang -c -Xclang -fexperimental-omit-vtable-rtti %s 2>&1 | FileCheck -check-prefix=ERROR %s
 // RUN: not %clang -c -Xclang -fexperimental-omit-vtable-rtti -frtti %s 2>&1 | FileCheck -check-prefix=ERROR %s
 // RUN: not %clang -c -Xclang -fexperimental-omit-vtable-rtti -fno-rtti -frtti %s 2>&1 | FileCheck -check-prefix=ERROR %s
 
