@@ -37,7 +37,7 @@ namespace __hwasan {
 
 class ScopedReport {
  public:
-  ScopedReport(bool fatal = false) : fatal(fatal) {
+  explicit ScopedReport(bool fatal) : fatal(fatal) {
     Lock lock(&error_message_lock_);
     error_message_ptr_ = fatal ? &error_message_ : nullptr;
     ++hwasan_report_count;
@@ -108,6 +108,7 @@ static void MaybePrintAndroidHelpUrl() {
 #endif
 }
 
+namespace {
 // A RAII object that holds a copy of the current thread stack ring buffer.
 // The actual stack buffer may change while we are iterating over it (for
 // example, Printf may call syslog() which can itself be built with hwasan).
@@ -143,6 +144,7 @@ class Decorator: public __sanitizer::SanitizerCommonDecorator {
   const char *Location() { return Green(); }
   const char *Thread() { return Green(); }
 };
+}  // namespace
 
 static bool FindHeapAllocation(HeapAllocationsRingBuffer *rb, uptr tagged_addr,
                                HeapAllocationRecord *har, uptr *ring_index,
@@ -373,7 +375,83 @@ static void ShowHeapOrGlobalCandidate(uptr untagged_addr, tag_t *candidate,
   }
 }
 
-void PrintAddressDescription(
+void ReportStats() {}
+
+static void PrintTagInfoAroundAddr(tag_t *tag_ptr, uptr num_rows,
+                                   void (*print_tag)(InternalScopedString &s,
+                                                     tag_t *tag)) {
+  const uptr row_len = 16;  // better be power of two.
+  tag_t *center_row_beg = reinterpret_cast<tag_t *>(
+      RoundDownTo(reinterpret_cast<uptr>(tag_ptr), row_len));
+  tag_t *beg_row = center_row_beg - row_len * (num_rows / 2);
+  tag_t *end_row = center_row_beg + row_len * ((num_rows + 1) / 2);
+  InternalScopedString s;
+  for (tag_t *row = beg_row; row < end_row; row += row_len) {
+    s.Append(row == center_row_beg ? "=>" : "  ");
+    s.AppendF("%p:", (void *)ShadowToMem(reinterpret_cast<uptr>(row)));
+    for (uptr i = 0; i < row_len; i++) {
+      s.Append(row + i == tag_ptr ? "[" : " ");
+      print_tag(s, &row[i]);
+      s.Append(row + i == tag_ptr ? "]" : " ");
+    }
+    s.AppendF("\n");
+  }
+  Printf("%s", s.data());
+}
+
+static void PrintTagsAroundAddr(tag_t *tag_ptr) {
+  Printf(
+      "Memory tags around the buggy address (one tag corresponds to %zd "
+      "bytes):\n",
+      kShadowAlignment);
+  PrintTagInfoAroundAddr(tag_ptr, 17, [](InternalScopedString &s, tag_t *tag) {
+    s.AppendF("%02x", *tag);
+  });
+
+  Printf(
+      "Tags for short granules around the buggy address (one tag corresponds "
+      "to %zd bytes):\n",
+      kShadowAlignment);
+  PrintTagInfoAroundAddr(tag_ptr, 3, [](InternalScopedString &s, tag_t *tag) {
+    if (*tag >= 1 && *tag <= kShadowAlignment) {
+      uptr granule_addr = ShadowToMem(reinterpret_cast<uptr>(tag));
+      s.AppendF("%02x",
+                *reinterpret_cast<u8 *>(granule_addr + kShadowAlignment - 1));
+    } else {
+      s.AppendF("..");
+    }
+  });
+  Printf(
+      "See "
+      "https://clang.llvm.org/docs/"
+      "HardwareAssistedAddressSanitizerDesign.html#short-granules for a "
+      "description of short granule tags\n");
+}
+
+static uptr GetTopPc(StackTrace *stack) {
+  return stack->size ? StackTrace::GetPreviousInstructionPc(stack->trace[0])
+                     : 0;
+}
+
+namespace {
+class BaseReport {
+ public:
+  BaseReport(StackTrace *stack, bool fatal, uptr tagged_addr)
+      : scoped_report(fatal),
+        stack(stack),
+        tagged_addr(tagged_addr),
+        untagged_addr(UntagAddr(tagged_addr)),
+        ptr_tag(GetTagFromPointer(tagged_addr)) {}
+
+ protected:
+  ScopedReport scoped_report;
+  StackTrace *stack;
+  uptr tagged_addr;
+  uptr untagged_addr;
+  tag_t ptr_tag;
+};
+
+static void PrintAddressDescription(
     uptr tagged_addr, uptr access_size,
     StackAllocationsRingBuffer *current_stack_allocations) {
   Decorator d;
@@ -512,68 +590,16 @@ void PrintAddressDescription(
   }
 }
 
-void ReportStats() {}
+class InvalidFreeReport : public BaseReport {
+ public:
+  InvalidFreeReport(StackTrace *stack, uptr tagged_addr)
+      : BaseReport(stack, flags()->halt_on_error, tagged_addr) {}
+  ~InvalidFreeReport();
 
-static void PrintTagInfoAroundAddr(tag_t *tag_ptr, uptr num_rows,
-                                   void (*print_tag)(InternalScopedString &s,
-                                                     tag_t *tag)) {
-  const uptr row_len = 16;  // better be power of two.
-  tag_t *center_row_beg = reinterpret_cast<tag_t *>(
-      RoundDownTo(reinterpret_cast<uptr>(tag_ptr), row_len));
-  tag_t *beg_row = center_row_beg - row_len * (num_rows / 2);
-  tag_t *end_row = center_row_beg + row_len * ((num_rows + 1) / 2);
-  InternalScopedString s;
-  for (tag_t *row = beg_row; row < end_row; row += row_len) {
-    s.Append(row == center_row_beg ? "=>" : "  ");
-    s.AppendF("%p:", (void *)ShadowToMem(reinterpret_cast<uptr>(row)));
-    for (uptr i = 0; i < row_len; i++) {
-      s.Append(row + i == tag_ptr ? "[" : " ");
-      print_tag(s, &row[i]);
-      s.Append(row + i == tag_ptr ? "]" : " ");
-    }
-    s.AppendF("\n");
-  }
-  Printf("%s", s.data());
-}
+ private:
+};
 
-static void PrintTagsAroundAddr(tag_t *tag_ptr) {
-  Printf(
-      "Memory tags around the buggy address (one tag corresponds to %zd "
-      "bytes):\n", kShadowAlignment);
-  PrintTagInfoAroundAddr(tag_ptr, 17, [](InternalScopedString &s, tag_t *tag) {
-    s.AppendF("%02x", *tag);
-  });
-
-  Printf(
-      "Tags for short granules around the buggy address (one tag corresponds "
-      "to %zd bytes):\n",
-      kShadowAlignment);
-  PrintTagInfoAroundAddr(tag_ptr, 3, [](InternalScopedString &s, tag_t *tag) {
-    if (*tag >= 1 && *tag <= kShadowAlignment) {
-      uptr granule_addr = ShadowToMem(reinterpret_cast<uptr>(tag));
-      s.AppendF("%02x",
-                *reinterpret_cast<u8 *>(granule_addr + kShadowAlignment - 1));
-    } else {
-      s.AppendF("..");
-    }
-  });
-  Printf(
-      "See "
-      "https://clang.llvm.org/docs/"
-      "HardwareAssistedAddressSanitizerDesign.html#short-granules for a "
-      "description of short granule tags\n");
-}
-
-uptr GetTopPc(StackTrace *stack) {
-  return stack->size ? StackTrace::GetPreviousInstructionPc(stack->trace[0])
-                     : 0;
-}
-
-void ReportInvalidFree(StackTrace *stack, uptr tagged_addr) {
-  ScopedReport R(flags()->halt_on_error);
-
-  uptr untagged_addr = UntagAddr(tagged_addr);
-  tag_t ptr_tag = GetTagFromPointer(tagged_addr);
+InvalidFreeReport::~InvalidFreeReport() {
   tag_t *tag_ptr = nullptr;
   tag_t mem_tag = 0;
   if (MemIsApp(untagged_addr)) {
@@ -611,21 +637,31 @@ void ReportInvalidFree(StackTrace *stack, uptr tagged_addr) {
   ReportErrorSummary(bug_type, stack);
 }
 
-void ReportTailOverwritten(StackTrace *stack, uptr tagged_addr, uptr orig_size,
-                           const u8 *expected) {
+class TailOverwrittenReport : public BaseReport {
+ public:
+  explicit TailOverwrittenReport(StackTrace *stack, uptr tagged_addr,
+                                 uptr orig_size, const u8 *expected)
+      : BaseReport(stack, flags()->halt_on_error, tagged_addr),
+        orig_size(orig_size),
+        expected(expected) {}
+  ~TailOverwrittenReport();
+
+ private:
+  uptr orig_size;
+  const u8 *expected;
+};
+
+TailOverwrittenReport::~TailOverwrittenReport() {
   uptr tail_size = kShadowAlignment - (orig_size % kShadowAlignment);
   u8 actual_expected[kShadowAlignment];
   internal_memcpy(actual_expected, expected, tail_size);
-  tag_t ptr_tag = GetTagFromPointer(tagged_addr);
   // Short granule is stashed in the last byte of the magic string. To avoid
   // confusion, make the expected magic string contain the short granule tag.
   if (orig_size % kShadowAlignment != 0) {
     actual_expected[tail_size - 1] = ptr_tag;
   }
 
-  ScopedReport R(flags()->halt_on_error);
   Decorator d;
-  uptr untagged_addr = UntagAddr(tagged_addr);
   Printf("%s", d.Error());
   const char *bug_type = "allocation-tail-overwritten";
   Report("ERROR: %s: %s; heap object [%p,%p) of size %zd\n", SanitizerToolName,
@@ -683,14 +719,28 @@ void ReportTailOverwritten(StackTrace *stack, uptr tagged_addr, uptr orig_size,
   ReportErrorSummary(bug_type, stack);
 }
 
-void ReportTagMismatch(StackTrace *stack, uptr tagged_addr, uptr access_size,
-                       bool is_store, bool fatal, uptr *registers_frame) {
-  ScopedReport R(fatal);
+class TagMismatchReport : public BaseReport {
+ public:
+  explicit TagMismatchReport(StackTrace *stack, uptr tagged_addr,
+                             uptr access_size, bool is_store, bool fatal,
+                             uptr *registers_frame)
+      : BaseReport(stack, fatal, tagged_addr),
+        access_size(access_size),
+        is_store(is_store),
+        registers_frame(registers_frame) {}
+  ~TagMismatchReport();
+
+ private:
+  uptr access_size;
+  bool is_store;
+  uptr *registers_frame;
+};
+
+TagMismatchReport::~TagMismatchReport() {
   SavedStackAllocations current_stack_allocations(
       GetCurrentThread()->stack_allocations());
 
   Decorator d;
-  uptr untagged_addr = UntagAddr(tagged_addr);
   // TODO: when possible, try to print heap-use-after-free, etc.
   const char *bug_type = "tag-mismatch";
   uptr pc = GetTopPc(stack);
@@ -704,7 +754,6 @@ void ReportTagMismatch(StackTrace *stack, uptr tagged_addr, uptr access_size,
       __hwasan_test_shadow(reinterpret_cast<void *>(tagged_addr), access_size);
   CHECK_GE(offset, 0);
   CHECK_LT(offset, static_cast<sptr>(access_size));
-  tag_t ptr_tag = GetTagFromPointer(tagged_addr);
   tag_t *tag_ptr =
       reinterpret_cast<tag_t *>(MemToShadow(untagged_addr + offset));
   tag_t mem_tag = *tag_ptr;
@@ -752,6 +801,22 @@ void ReportTagMismatch(StackTrace *stack, uptr tagged_addr, uptr access_size,
 
   MaybePrintAndroidHelpUrl();
   ReportErrorSummary(bug_type, stack);
+}
+}  // namespace
+
+void ReportInvalidFree(StackTrace *stack, uptr tagged_addr) {
+  InvalidFreeReport R(stack, tagged_addr);
+}
+
+void ReportTailOverwritten(StackTrace *stack, uptr tagged_addr, uptr orig_size,
+                           const u8 *expected) {
+  TailOverwrittenReport R(stack, tagged_addr, orig_size, expected);
+}
+
+void ReportTagMismatch(StackTrace *stack, uptr tagged_addr, uptr access_size,
+                       bool is_store, bool fatal, uptr *registers_frame) {
+  TagMismatchReport R(stack, tagged_addr, access_size, is_store, fatal,
+                      registers_frame);
 }
 
 // See the frame breakdown defined in __hwasan_tag_mismatch (from
