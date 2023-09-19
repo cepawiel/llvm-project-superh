@@ -301,6 +301,10 @@ Bug Fixes to C++ Support
   makes an invalid call to an immediate function.
   (`#66324 <https://github.com/llvm/llvm-project/issues/66324>`_)
 
+- Fix crash for a lambda attribute with a statement expression
+  that contains a `return`.
+  (`#48527 <https://github.com/llvm/llvm-project/issues/48527>`_)
+
 Bug Fixes to AST Handling
 ^^^^^^^^^^^^^^^^^^^^^^^^^
 - Fixed an import failure of recursive friend class template.
@@ -445,6 +449,13 @@ Static Analyzer
 - Added a new checker ``core.BitwiseShift`` which reports situations where
   bitwise shift operators produce undefined behavior (because some operand is
   negative or too large).
+
+- The ``alpha.security.taint.TaintPropagation`` checker no longer propagates
+  taint on ``strlen`` and ``strnlen`` calls, unless these are marked
+  explicitly propagators in the user-provided taint configuration file.
+  This removal empirically reduces the number of false positive reports.
+  Read the PR for the details.
+  (`#66086 <https://github.com/llvm/llvm-project/pull/66086>`_)
 
 .. _release-notes-sanitizers:
 
