@@ -5843,9 +5843,10 @@ TargetLowering::ConstraintGroup TargetLowering::getConstraintPreferences(
     Ret.emplace_back(Code, CType);
   }
 
-  std::sort(Ret.begin(), Ret.end(), [](ConstraintPair a, ConstraintPair b) {
-    return getConstraintPiority(a.second) > getConstraintPiority(b.second);
-  });
+  std::stable_sort(
+      Ret.begin(), Ret.end(), [](ConstraintPair a, ConstraintPair b) {
+        return getConstraintPiority(a.second) > getConstraintPiority(b.second);
+      });
 
   return Ret;
 }
@@ -5888,9 +5889,15 @@ void TargetLowering::ComputeConstraintToUse(AsmOperandInfo &OpInfo,
     for (const unsigned E = G.size();
          BestIdx < E && (G[BestIdx].second == TargetLowering::C_Other ||
                          G[BestIdx].second == TargetLowering::C_Immediate);
-         ++BestIdx)
+         ++BestIdx) {
       if (lowerImmediateIfPossible(G[BestIdx], Op, DAG, *this))
         break;
+      // If we're out of constraints, just pick the first one.
+      if (BestIdx + 1 == E) {
+        BestIdx = 0;
+        break;
+      }
+    }
 
     OpInfo.ConstraintCode = G[BestIdx].first;
     OpInfo.ConstraintType = G[BestIdx].second;
