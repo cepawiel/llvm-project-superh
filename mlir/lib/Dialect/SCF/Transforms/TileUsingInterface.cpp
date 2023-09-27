@@ -101,9 +101,10 @@ static bool tileDividesIterationDomain(Range loopRange) {
 /// `tileSize`, i.e., `min(tileSize, range.end() - iv)`.
 static OpFoldResult getBoundedTileSize(OpBuilder &b, Location loc,
                                        Range loopRange, Value iv,
-                                       OpFoldResult tileSize) {
-  if (isConstantIntValue(tileSize, 1))
-    return tileSize;
+                                       Value tileSize) {
+  std::optional<int64_t> ts = getConstantIntValue(tileSize);
+  if (ts && ts.value() == 1)
+    return getAsOpFoldResult(tileSize);
 
   if (tileDividesIterationDomain(
           Range{loopRange.offset, loopRange.size, tileSize}))
@@ -197,7 +198,7 @@ yieldTiledValues(RewriterBase &rewriter, ValueRange initValues,
                  ArrayRef<SmallVector<OpFoldResult>> tileOffsetsList,
                  ArrayRef<SmallVector<OpFoldResult>> tileSizesList,
                  MutableArrayRef<scf::ForOp> loops) {
-  NewYieldValueFn yieldValueFn =
+  NewYieldValuesFn yieldValueFn =
       [&](OpBuilder &b, Location loc,
           ArrayRef<BlockArgument> newBBArgs) -> SmallVector<Value> {
     SmallVector<Value> inserts;
@@ -219,7 +220,6 @@ yieldTiledValues(RewriterBase &rewriter, ValueRange initValues,
       replaceLoopNestWithNewYields(rewriter, loops, initValues, yieldValueFn,
                                    /*replaceIterOperandsUsesInLoop =*/false);
   for (const auto &loop : llvm::enumerate(loops)) {
-    rewriter.eraseOp(loop.value());
     loops[loop.index()] = newLoops[loop.index()];
   }
   return llvm::to_vector(llvm::map_range(
