@@ -819,11 +819,11 @@ public:
 private:
   void initializeCallbacks(Module &M);
 
-  void InstrumentGlobals(IRBuilder<> &IRB, Module &M, bool *CtorComdat);
+  void instrumentGlobals(IRBuilder<> &IRB, Module &M, bool *CtorComdat);
   void InstrumentGlobalsCOFF(IRBuilder<> &IRB, Module &M,
                              ArrayRef<GlobalVariable *> ExtendedGlobals,
                              ArrayRef<Constant *> MetadataInitializers);
-  void InstrumentGlobalsELF(IRBuilder<> &IRB, Module &M,
+  void instrumentGlobalsELF(IRBuilder<> &IRB, Module &M,
                             ArrayRef<GlobalVariable *> ExtendedGlobals,
                             ArrayRef<Constant *> MetadataInitializers,
                             const std::string &UniqueModuleId);
@@ -2177,7 +2177,7 @@ void ModuleAddressSanitizer::InstrumentGlobalsCOFF(
     appendToCompilerUsed(M, MetadataGlobals);
 }
 
-void ModuleAddressSanitizer::InstrumentGlobalsELF(
+void ModuleAddressSanitizer::instrumentGlobalsELF(
     IRBuilder<> &IRB, Module &M, ArrayRef<GlobalVariable *> ExtendedGlobals,
     ArrayRef<Constant *> MetadataInitializers,
     const std::string &UniqueModuleId) {
@@ -2187,7 +2187,7 @@ void ModuleAddressSanitizer::InstrumentGlobalsELF(
   // false negative odr violations at link time. If odr indicators are used, we
   // keep the comdat sections, as link time odr violations will be dectected on
   // the odr indicator symbols.
-  bool UseComdatForGlobalsGC = UseOdrIndicator;
+  bool UseComdatForGlobalsGC = UseOdrIndicator && !UniqueModuleId.empty();
 
   SmallVector<GlobalValue *, 16> MetadataGlobals(ExtendedGlobals.size());
   for (size_t i = 0; i < ExtendedGlobals.size(); i++) {
@@ -2343,7 +2343,7 @@ void ModuleAddressSanitizer::InstrumentGlobalsWithMetadataArray(
 // redzones and inserts this function into llvm.global_ctors.
 // Sets *CtorComdat to true if the global registration code emitted into the
 // asan constructor is comdat-compatible.
-void ModuleAddressSanitizer::InstrumentGlobals(IRBuilder<> &IRB, Module &M,
+void ModuleAddressSanitizer::instrumentGlobals(IRBuilder<> &IRB, Module &M,
                                                bool *CtorComdat) {
   // Build set of globals that are aliased by some GA, where
   // getExcludedAliasedGlobal(GA) returns the relevant GlobalVariable.
@@ -2519,7 +2519,7 @@ void ModuleAddressSanitizer::InstrumentGlobals(IRBuilder<> &IRB, Module &M,
     // function will be called. The module destructor is not created when n ==
     // 0.
     *CtorComdat = true;
-    InstrumentGlobalsELF(IRB, M, NewGlobals, Initializers,
+    instrumentGlobalsELF(IRB, M, NewGlobals, Initializers,
                          getUniqueModuleId(&M));
   } else if (n == 0) {
     // When UseGlobalsGC is false, COMDAT can still be used if n == 0, because
@@ -2604,10 +2604,10 @@ bool ModuleAddressSanitizer::instrumentModule(Module &M) {
     assert(AsanCtorFunction || ConstructorKind == AsanCtorKind::None);
     if (AsanCtorFunction) {
       IRBuilder<> IRB(AsanCtorFunction->getEntryBlock().getTerminator());
-      InstrumentGlobals(IRB, M, &CtorComdat);
+      instrumentGlobals(IRB, M, &CtorComdat);
     } else {
       IRBuilder<> IRB(*C);
-      InstrumentGlobals(IRB, M, &CtorComdat);
+      instrumentGlobals(IRB, M, &CtorComdat);
     }
   }
 
