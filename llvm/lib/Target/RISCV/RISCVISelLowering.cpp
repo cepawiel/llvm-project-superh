@@ -2128,7 +2128,7 @@ static void translateSetCCForBranch(const SDLoc &DL, SDValue &LHS, SDValue &RHS,
       }
       break;
     case ISD::SETLT:
-      // Convert X < 1 to 0 <= X.
+      // Convert X < 1 to 0 >= X.
       if (C == 1) {
         RHS = LHS;
         LHS = DAG.getConstant(0, DL, RHS.getValueType());
@@ -4339,7 +4339,8 @@ static SDValue lowerBitreverseShuffle(ShuffleVectorSDNode *SVN,
 
   assert(VT.getVectorElementType() == MVT::i1);
 
-  if (!ShuffleVectorInst::isReverseMask(SVN->getMask()) ||
+  if (!ShuffleVectorInst::isReverseMask(SVN->getMask(),
+                                        SVN->getMask().size()) ||
       !SVN->getOperand(1).isUndef())
     return SDValue();
 
@@ -11151,6 +11152,11 @@ combineBinOpOfExtractToReduceTree(SDNode *N, SelectionDAG &DAG,
   // to i64 (so that the vector element type matches the add type), and while
   // it's safe to introduce odd sized vector types.
   if (DAG.NewNodesMustHaveLegalTypes)
+    return SDValue();
+
+  // Without V, this transform isn't useful.  We could form the (illegal)
+  // operations and let them be scalarized again, but there's really no point.
+  if (!Subtarget.hasVInstructions())
     return SDValue();
 
   const SDLoc DL(N);
