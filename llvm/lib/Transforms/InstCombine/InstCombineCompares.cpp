@@ -2491,7 +2491,7 @@ Instruction *InstCombinerImpl::foldICmpShrConstant(ICmpInst &Cmp,
                             ConstantInt::getAllOnesValue(ShrTy));
       }
     }
-  } else {
+  } else if (!IsAShr) {
     if (Pred == CmpInst::ICMP_ULT || (Pred == CmpInst::ICMP_UGT && IsExact)) {
       // icmp ult (lshr X, ShAmtC), C --> icmp ult X, (C << ShAmtC)
       // icmp ugt (lshr exact X, ShAmtC), C --> icmp ugt X, (C << ShAmtC)
@@ -5482,6 +5482,32 @@ Instruction *InstCombinerImpl::foldICmpEquality(ICmpInst &I) {
                          m_OneUse(m_Xor(m_Value(A), m_ImmConstant(Cst))),
                          m_CombineAnd(m_Value(B), m_Unless(m_ImmConstant())))))
     return new ICmpInst(Pred, Builder.CreateXor(A, B), Cst);
+
+  {
+    // (icmp eq/ne (and (add/sub/xor X, P2), P2), P2)
+    auto m_Matcher =
+        m_CombineOr(m_CombineOr(m_c_Add(m_Value(B), m_Deferred(A)),
+                                m_c_Xor(m_Value(B), m_Deferred(A))),
+                    m_Sub(m_Value(B), m_Deferred(A)));
+    std::optional<bool> IsZero = std::nullopt;
+    if (match(&I, m_c_ICmp(PredUnused, m_OneUse(m_c_And(m_Value(A), m_Matcher)),
+                           m_Deferred(A))))
+      IsZero = false;
+    // (icmp eq/ne (and (add/sub/xor X, P2), P2), 0)
+    else if (match(&I,
+                   m_ICmp(PredUnused, m_OneUse(m_c_And(m_Value(A), m_Matcher)),
+                          m_Zero())))
+      IsZero = true;
+
+    if (IsZero && isKnownToBeAPowerOfTwo(A, /* OrZero */ true, /*Depth*/ 0, &I))
+      // (icmp eq/ne (and (add/sub/xor X, P2), P2), P2)
+      //    -> (icmp eq/ne (and X, P2), 0)
+      // (icmp eq/ne (and (add/sub/xor X, P2), P2), 0)
+      //    -> (icmp eq/ne (and X, P2), P2)
+      return new ICmpInst(Pred, Builder.CreateAnd(B, A),
+                          *IsZero ? A
+                                  : ConstantInt::getNullValue(A->getType()));
+  }
 
   return nullptr;
 }
