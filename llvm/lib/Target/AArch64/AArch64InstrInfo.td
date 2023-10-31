@@ -94,7 +94,7 @@ def HasTLB_RMI          : Predicate<"Subtarget->hasTLB_RMI()">,
 def HasFlagM         : Predicate<"Subtarget->hasFlagM()">,
                        AssemblerPredicateWithAll<(all_of FeatureFlagM), "flagm">;
 
-def HasRCPC_IMMO      : Predicate<"Subtarget->hasRCPCImm()">,
+def HasRCPC_IMMO      : Predicate<"Subtarget->hasRCPC_IMMO()">,
                        AssemblerPredicateWithAll<(all_of FeatureRCPC_IMMO), "rcpc-immo">;
 
 def HasFPARMv8       : Predicate<"Subtarget->hasFPARMv8()">,
@@ -841,6 +841,9 @@ def AArch64rshrnb : SDNode<"AArch64ISD::RSHRNB_I", SD_AArch64rshrnb>;
 def AArch64rshrnb_pf : PatFrags<(ops node:$rs, node:$i),
                             [(AArch64rshrnb node:$rs, node:$i),
                             (int_aarch64_sve_rshrnb node:$rs, node:$i)]>;
+
+def AArch64CttzElts : SDNode<"AArch64ISD::CTTZ_ELTS", SDTypeProfile<1, 1,
+                             [SDTCisInt<0>, SDTCisVec<1>]>, []>;
 
 // Match add node and also treat an 'or' node is as an 'add' if the or'ed operands
 // have no common bits.
