@@ -3798,13 +3798,24 @@ static SDValue lowerBUILD_VECTOR(SDValue Op, SelectionDAG &DAG,
 
   const unsigned Policy = RISCVII::TAIL_AGNOSTIC | RISCVII::MASK_AGNOSTIC;
 
-  SDValue Vec = DAG.getUNDEF(ContainerVT);
+  SDValue Vec;
   UndefCount = 0;
   for (SDValue V : Op->ops()) {
     if (V.isUndef()) {
       UndefCount++;
       continue;
     }
+
+    // Start our sequence with a TA splat in the hopes that hardware is able to
+    // recognize there's no dependency on the prior value of our temporary
+    // register.
+    if (!Vec) {
+      Vec = DAG.getSplatVector(VT, DL, V);
+      Vec = convertToScalableVector(ContainerVT, Vec, DAG, Subtarget);
+      UndefCount = 0;
+      continue;
+    }
+
     if (UndefCount) {
       const SDValue Offset = DAG.getConstant(UndefCount, DL, Subtarget.getXLenVT());
       Vec = getVSlidedown(DAG, Subtarget, DL, ContainerVT, DAG.getUNDEF(ContainerVT),
@@ -17331,6 +17342,7 @@ SDValue RISCVTargetLowering::LowerFormalArguments(
   case CallingConv::C:
   case CallingConv::Fast:
   case CallingConv::SPIR_KERNEL:
+  case CallingConv::GRAAL:
     break;
   case CallingConv::GHC:
     if (!Subtarget.hasStdExtFOrZfinx() || !Subtarget.hasStdExtDOrZdinx())
