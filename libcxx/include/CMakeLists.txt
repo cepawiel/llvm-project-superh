@@ -849,7 +849,6 @@ set(files
   __utility/integer_sequence.h
   __utility/is_pointer_in_range.h
   __utility/move.h
-  __utility/no_destroy.h
   __utility/pair.h
   __utility/piecewise_construct.h
   __utility/priority_tag.h
@@ -920,23 +919,12 @@ set(files
   experimental/__simd/traits.h
   experimental/__simd/utility.h
   experimental/__simd/vec_ext.h
-  experimental/deque
-  experimental/forward_list
   experimental/iterator
-  experimental/list
-  experimental/map
   experimental/memory
-  experimental/memory_resource
   experimental/propagate_const
-  experimental/regex
-  experimental/set
   experimental/simd
-  experimental/string
   experimental/type_traits
-  experimental/unordered_map
-  experimental/unordered_set
   experimental/utility
-  experimental/vector
   ext/__hash
   ext/hash_map
   ext/hash_set
