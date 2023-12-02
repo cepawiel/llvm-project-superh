@@ -184,6 +184,9 @@ C++2c Feature Support
 
 - Implemented `P2864R2 Remove Deprecated Arithmetic Conversion on Enumerations From C++26 <https://wg21.link/P2864R2>`_.
 
+- Implemented `P2361R6 Template parameter initialization <https://wg21.link/P2308R1>`_.
+  This change is applied as a DR in all language modes.
+
 
 Resolutions to C++ Defect Reports
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -981,6 +984,8 @@ clang-format
 - Add ``AllowShortCompoundRequirementOnASingleLine`` option.
 - Change ``BreakAfterAttributes`` from ``Never`` to ``Leave`` in LLVM style.
 - Add ``BreakAdjacentStringLiterals`` option.
+- Add ``ObjCPropertyAttributeOrder`` which can be used to sort ObjC property
+  attributes (like ``nonatomic, strong, nullable``).
 
 libclang
 --------
