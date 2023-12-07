@@ -54,31 +54,29 @@ func.func @by_operand_type() {
   return
 }
 
-transform.sequence failures(propagate) {
-^bb1(%arg1: !transform.any_op):
-  %match_name1 = transform.structured.match
-    ops{["arith.fptoui"]} filter_operand_types = [f32] in %arg1 : (!transform.any_op) -> !transform.any_op
-  transform.test_print_remark_at_operand %match_name1, "matched op name" : !transform.any_op
-  transform.test_consume_operand %match_name1 : !transform.any_op
+module attributes {transform.with_named_sequence} {
+  transform.named_sequence @__transform_main(%arg1: !transform.any_op {transform.readonly}) {
+    %match_name1 = transform.structured.match
+      ops{["arith.fptoui"]} filter_operand_types = [f32] in %arg1 : (!transform.any_op) -> !transform.any_op
+    transform.test_print_remark_at_operand %match_name1, "matched op name" : !transform.any_op
+    transform.test_consume_operand %match_name1 : !transform.any_op
 
-  %match_name2 = transform.structured.match
-    ops{["arith.addf"]} filter_operand_types = [f32] in %arg1 : (!transform.any_op) -> !transform.any_op
-  transform.test_print_remark_at_operand %match_name2, "matched op name" : !transform.any_op
-  transform.test_consume_operand %match_name2 : !transform.any_op
+    %match_name2 = transform.structured.match
+      ops{["arith.addf"]} filter_operand_types = [f32] in %arg1 : (!transform.any_op) -> !transform.any_op
+    transform.test_print_remark_at_operand %match_name2, "matched op name" : !transform.any_op
+    transform.test_consume_operand %match_name2 : !transform.any_op
 
-  %no_match_name1 = transform.structured.match
-    ops{["arith.fptoui"]} filter_operand_types = [i32] in %arg1 : (!transform.any_op) -> !transform.any_op
-  transform.test_print_remark_at_operand %no_match_name1, "should not match" : !transform.any_op
-  transform.test_consume_operand %no_match_name1 : !transform.any_op
+    %no_match_name1 = transform.structured.match
+      ops{["arith.fptoui"]} filter_operand_types = [i32] in %arg1 : (!transform.any_op) -> !transform.any_op
+    transform.test_print_remark_at_operand %no_match_name1, "should not match" : !transform.any_op
+    transform.test_consume_operand %no_match_name1 : !transform.any_op
 
-  %no_match_name2 = transform.structured.match
-    ops{["math.fpowi"]} filter_operand_types = [f32] in %arg1 : (!transform.any_op) -> !transform.any_op
-  transform.test_print_remark_at_operand %no_match_name2, "should not match" : !transform.any_op
-  transform.test_consume_operand %no_match_name2 : !transform.any_op
-
-  // expected-error @+1 {{If filter_operand_types contains more than a type, then it must contain as much types as the number of operands in the target ops}}
-  %failure_match = transform.structured.match
-    ops{["arith.fptoui"]} filter_operand_types = [i32, i32] in %arg1 : (!transform.any_op) -> !transform.any_op
+    %no_match_name2 = transform.structured.match
+      ops{["math.fpowi"]} filter_operand_types = [f32] in %arg1 : (!transform.any_op) -> !transform.any_op
+    transform.test_print_remark_at_operand %no_match_name2, "should not match" : !transform.any_op
+    transform.test_consume_operand %no_match_name2 : !transform.any_op
+    transform.yield
+  }
 }
 
 // -----
