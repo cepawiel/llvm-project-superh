@@ -1461,6 +1461,14 @@ static void processDbgDeclares(FunctionLoweringInfo &FuncInfo) {
     if (DI && processDbgDeclare(FuncInfo, DI->getAddress(), DI->getExpression(),
                                 DI->getVariable(), DI->getDebugLoc()))
       FuncInfo.PreprocessedDbgDeclares.insert(DI);
+
+    for (const DPValue &DPV : I.getDbgValueRange()) {
+      if (DPV.getType() == DPValue::LocationType::Declare &&
+          processDbgDeclare(FuncInfo, DPV.getVariableLocationOp(0),
+                            DPV.getExpression(), DPV.getVariable(),
+                            DPV.getDebugLoc()))
+        FuncInfo.PreprocessedDPVDeclares.insert(&DPV);
+    }
   }
 }
 
@@ -3285,6 +3293,29 @@ void SelectionDAGISel::SelectCodeCommon(SDNode *NodeToMatch,
       continue;
     }
 
+    case OPC_MoveSibling:
+    case OPC_MoveSibling0:
+    case OPC_MoveSibling1:
+    case OPC_MoveSibling2:
+    case OPC_MoveSibling3:
+    case OPC_MoveSibling4:
+    case OPC_MoveSibling5:
+    case OPC_MoveSibling6:
+    case OPC_MoveSibling7: {
+      // Pop the current node off the NodeStack.
+      NodeStack.pop_back();
+      assert(!NodeStack.empty() && "Node stack imbalance!");
+      N = NodeStack.back();
+
+      unsigned SiblingNo = Opcode == OPC_MoveSibling
+                               ? MatcherTable[MatcherIndex++]
+                               : Opcode - OPC_MoveSibling0;
+      if (SiblingNo >= N.getNumOperands())
+        break; // Match fails if out of range sibling #.
+      N = N.getOperand(SiblingNo);
+      NodeStack.push_back(N);
+      continue;
+    }
     case OPC_MoveParent:
       // Pop the current node off the NodeStack.
       NodeStack.pop_back();
@@ -3757,20 +3788,77 @@ void SelectionDAGISel::SelectCodeCommon(SDNode *NodeToMatch,
       continue;
     }
 
-    case OPC_EmitNode:     case OPC_MorphNodeTo:
-    case OPC_EmitNode0:    case OPC_EmitNode1:    case OPC_EmitNode2:
-    case OPC_MorphNodeTo0: case OPC_MorphNodeTo1: case OPC_MorphNodeTo2: {
+    case OPC_EmitNode:
+    case OPC_EmitNode0:
+    case OPC_EmitNode1:
+    case OPC_EmitNode2:
+    case OPC_EmitNode0None:
+    case OPC_EmitNode1None:
+    case OPC_EmitNode2None:
+    case OPC_EmitNode0Chain:
+    case OPC_EmitNode1Chain:
+    case OPC_EmitNode2Chain:
+    case OPC_MorphNodeTo:
+    case OPC_MorphNodeTo0:
+    case OPC_MorphNodeTo1:
+    case OPC_MorphNodeTo2:
+    case OPC_MorphNodeTo0None:
+    case OPC_MorphNodeTo1None:
+    case OPC_MorphNodeTo2None:
+    case OPC_MorphNodeTo0Chain:
+    case OPC_MorphNodeTo1Chain:
+    case OPC_MorphNodeTo2Chain:
+    case OPC_MorphNodeTo0GlueInput:
+    case OPC_MorphNodeTo1GlueInput:
+    case OPC_MorphNodeTo2GlueInput:
+    case OPC_MorphNodeTo0GlueOutput:
+    case OPC_MorphNodeTo1GlueOutput:
+    case OPC_MorphNodeTo2GlueOutput: {
       uint16_t TargetOpc = MatcherTable[MatcherIndex++];
       TargetOpc |= static_cast<uint16_t>(MatcherTable[MatcherIndex++]) << 8;
-      unsigned EmitNodeInfo = MatcherTable[MatcherIndex++];
+      unsigned EmitNodeInfo;
+      if (Opcode >= OPC_EmitNode0None && Opcode <= OPC_EmitNode2Chain) {
+        if (Opcode >= OPC_EmitNode0Chain && Opcode <= OPC_EmitNode2Chain)
+          EmitNodeInfo = OPFL_Chain;
+        else
+          EmitNodeInfo = OPFL_None;
+      } else if (Opcode >= OPC_MorphNodeTo0None &&
+                 Opcode <= OPC_MorphNodeTo2GlueOutput) {
+        if (Opcode >= OPC_MorphNodeTo0Chain && Opcode <= OPC_MorphNodeTo2Chain)
+          EmitNodeInfo = OPFL_Chain;
+        else if (Opcode >= OPC_MorphNodeTo0GlueInput &&
+                 Opcode <= OPC_MorphNodeTo2GlueInput)
+          EmitNodeInfo = OPFL_GlueInput;
+        else if (Opcode >= OPC_MorphNodeTo0GlueOutput &&
+                 Opcode <= OPC_MorphNodeTo2GlueOutput)
+          EmitNodeInfo = OPFL_GlueOutput;
+        else
+          EmitNodeInfo = OPFL_None;
+      } else
+        EmitNodeInfo = MatcherTable[MatcherIndex++];
       // Get the result VT list.
       unsigned NumVTs;
       // If this is one of the compressed forms, get the number of VTs based
       // on the Opcode. Otherwise read the next byte from the table.
       if (Opcode >= OPC_MorphNodeTo0 && Opcode <= OPC_MorphNodeTo2)
         NumVTs = Opcode - OPC_MorphNodeTo0;
+      else if (Opcode >= OPC_MorphNodeTo0None && Opcode <= OPC_MorphNodeTo2None)
+        NumVTs = Opcode - OPC_MorphNodeTo0None;
+      else if (Opcode >= OPC_MorphNodeTo0Chain &&
+               Opcode <= OPC_MorphNodeTo2Chain)
+        NumVTs = Opcode - OPC_MorphNodeTo0Chain;
+      else if (Opcode >= OPC_MorphNodeTo0GlueInput &&
+               Opcode <= OPC_MorphNodeTo2GlueInput)
+        NumVTs = Opcode - OPC_MorphNodeTo0GlueInput;
+      else if (Opcode >= OPC_MorphNodeTo0GlueOutput &&
+               Opcode <= OPC_MorphNodeTo2GlueOutput)
+        NumVTs = Opcode - OPC_MorphNodeTo0GlueOutput;
       else if (Opcode >= OPC_EmitNode0 && Opcode <= OPC_EmitNode2)
         NumVTs = Opcode - OPC_EmitNode0;
+      else if (Opcode >= OPC_EmitNode0None && Opcode <= OPC_EmitNode2None)
+        NumVTs = Opcode - OPC_EmitNode0None;
+      else if (Opcode >= OPC_EmitNode0Chain && Opcode <= OPC_EmitNode2Chain)
+        NumVTs = Opcode - OPC_EmitNode0Chain;
       else
         NumVTs = MatcherTable[MatcherIndex++];
       SmallVector<EVT, 4> VTs;
@@ -3843,8 +3931,9 @@ void SelectionDAGISel::SelectCodeCommon(SDNode *NodeToMatch,
 
       // Create the node.
       MachineSDNode *Res = nullptr;
-      bool IsMorphNodeTo = Opcode == OPC_MorphNodeTo ||
-                     (Opcode >= OPC_MorphNodeTo0 && Opcode <= OPC_MorphNodeTo2);
+      bool IsMorphNodeTo =
+          Opcode == OPC_MorphNodeTo ||
+          (Opcode >= OPC_MorphNodeTo0 && Opcode <= OPC_MorphNodeTo2GlueOutput);
       if (!IsMorphNodeTo) {
         // If this is a normal EmitNode command, just create the new node and
         // add the results to the RecordedNodes list.

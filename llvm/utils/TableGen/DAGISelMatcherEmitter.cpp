@@ -456,6 +456,17 @@ EmitMatcher(const Matcher *N, const unsigned Indent, unsigned CurrentIdx,
     return (MCM->getChildNo() >= 8) ? 2 : 1;
   }
 
+  case Matcher::MoveSibling: {
+    const auto *MSM = cast<MoveSiblingMatcher>(N);
+
+    OS << "OPC_MoveSibling";
+    // Handle the specialized forms.
+    if (MSM->getSiblingNo() >= 8)
+      OS << ", ";
+    OS << MSM->getSiblingNo() << ",\n";
+    return (MSM->getSiblingNo() >= 8) ? 2 : 1;
+  }
+
   case Matcher::MoveParent:
     OS << "OPC_MoveParent,\n";
     return 1;
@@ -576,7 +587,7 @@ EmitMatcher(const Matcher *N, const unsigned Indent, unsigned CurrentIdx,
     return CurrentIdx - StartIdx + 1;
   }
 
- case Matcher::CheckType:
+  case Matcher::CheckType:
     if (cast<CheckTypeMatcher>(N)->getResNo() == 0) {
       MVT::SimpleValueType VT = cast<CheckTypeMatcher>(N)->getType();
       switch (VT) {
@@ -589,24 +600,24 @@ EmitMatcher(const Matcher *N, const unsigned Indent, unsigned CurrentIdx,
         return 2;
       }
     }
-    OS << "OPC_CheckTypeRes, " << cast<CheckTypeMatcher>(N)->getResNo()
-       << ", " << getEnumName(cast<CheckTypeMatcher>(N)->getType()) << ",\n";
+    OS << "OPC_CheckTypeRes, " << cast<CheckTypeMatcher>(N)->getResNo() << ", "
+       << getEnumName(cast<CheckTypeMatcher>(N)->getType()) << ",\n";
     return 3;
 
- case Matcher::CheckChildType: {
-   MVT::SimpleValueType VT = cast<CheckChildTypeMatcher>(N)->getType();
-   switch (VT) {
-   case MVT::i32:
-   case MVT::i64:
-     OS << "OPC_CheckChild" << cast<CheckChildTypeMatcher>(N)->getChildNo()
-        << "TypeI" << MVT(VT).getScalarSizeInBits() << ",\n";
-     return 1;
-   default:
-     OS << "OPC_CheckChild" << cast<CheckChildTypeMatcher>(N)->getChildNo()
-        << "Type, " << getEnumName(VT) << ",\n";
-     return 2;
-   }
- }
+  case Matcher::CheckChildType: {
+    MVT::SimpleValueType VT = cast<CheckChildTypeMatcher>(N)->getType();
+    switch (VT) {
+    case MVT::i32:
+    case MVT::i64:
+      OS << "OPC_CheckChild" << cast<CheckChildTypeMatcher>(N)->getChildNo()
+         << "TypeI" << MVT(VT).getSizeInBits() << ",\n";
+      return 1;
+    default:
+      OS << "OPC_CheckChild" << cast<CheckChildTypeMatcher>(N)->getChildNo()
+         << "Type, " << getEnumName(VT) << ",\n";
+      return 2;
+    }
+  }
 
   case Matcher::CheckInteger: {
     OS << "OPC_CheckInteger, ";
@@ -693,7 +704,7 @@ EmitMatcher(const Matcher *N, const unsigned Indent, unsigned CurrentIdx,
     case MVT::i32:
     case MVT::i64:
       OpBytes = 1;
-      OS << "OPC_EmitInteger" << MVT(VT).getScalarSizeInBits() << ", ";
+      OS << "OPC_EmitInteger" << MVT(VT).getSizeInBits() << ", ";
       break;
     default:
       OpBytes = 2;
@@ -712,7 +723,7 @@ EmitMatcher(const Matcher *N, const unsigned Indent, unsigned CurrentIdx,
     switch (VT) {
     case MVT::i32:
       OpBytes = 1;
-      OS << "OPC_EmitStringInteger" << MVT(VT).getScalarSizeInBits() << ", ";
+      OS << "OPC_EmitStringInteger" << MVT(VT).getSizeInBits() << ", ";
       break;
     default:
       OpBytes = 2;
@@ -824,21 +835,50 @@ EmitMatcher(const Matcher *N, const unsigned Indent, unsigned CurrentIdx,
       }
     }
     const EmitNodeMatcherCommon *EN = cast<EmitNodeMatcherCommon>(N);
-    OS << (isa<EmitNodeMatcher>(EN) ? "OPC_EmitNode" : "OPC_MorphNodeTo");
+    bool IsEmitNode = isa<EmitNodeMatcher>(EN);
+    OS << (IsEmitNode ? "OPC_EmitNode" : "OPC_MorphNodeTo");
     bool CompressVTs = EN->getNumVTs() < 3;
-    if (CompressVTs)
+    bool CompressNodeInfo = false;
+    if (CompressVTs) {
       OS << EN->getNumVTs();
+      if (!EN->hasChain() && !EN->hasInGlue() && !EN->hasOutGlue() &&
+          !EN->hasMemRefs() && EN->getNumFixedArityOperands() == -1) {
+        CompressNodeInfo = true;
+        OS << "None";
+      } else if (EN->hasChain() && !EN->hasInGlue() && !EN->hasOutGlue() &&
+                 !EN->hasMemRefs() && EN->getNumFixedArityOperands() == -1) {
+        CompressNodeInfo = true;
+        OS << "Chain";
+      } else if (!IsEmitNode && !EN->hasChain() && EN->hasInGlue() &&
+                 !EN->hasOutGlue() && !EN->hasMemRefs() &&
+                 EN->getNumFixedArityOperands() == -1) {
+        CompressNodeInfo = true;
+        OS << "GlueInput";
+      } else if (!IsEmitNode && !EN->hasChain() && !EN->hasInGlue() &&
+                 EN->hasOutGlue() && !EN->hasMemRefs() &&
+                 EN->getNumFixedArityOperands() == -1) {
+        CompressNodeInfo = true;
+        OS << "GlueOutput";
+      }
+    }
 
     const CodeGenInstruction &CGI = EN->getInstruction();
     OS << ", TARGET_VAL(" << CGI.Namespace << "::" << CGI.TheDef->getName()
-       << "), 0";
+       << ")";
 
-    if (EN->hasChain())   OS << "|OPFL_Chain";
-    if (EN->hasInGlue())  OS << "|OPFL_GlueInput";
-    if (EN->hasOutGlue()) OS << "|OPFL_GlueOutput";
-    if (EN->hasMemRefs()) OS << "|OPFL_MemRefs";
-    if (EN->getNumFixedArityOperands() != -1)
-      OS << "|OPFL_Variadic" << EN->getNumFixedArityOperands();
+    if (!CompressNodeInfo) {
+      OS << ", 0";
+      if (EN->hasChain())
+        OS << "|OPFL_Chain";
+      if (EN->hasInGlue())
+        OS << "|OPFL_GlueInput";
+      if (EN->hasOutGlue())
+        OS << "|OPFL_GlueOutput";
+      if (EN->hasMemRefs())
+        OS << "|OPFL_MemRefs";
+      if (EN->getNumFixedArityOperands() != -1)
+        OS << "|OPFL_Variadic" << EN->getNumFixedArityOperands();
+    }
     OS << ",\n";
 
     OS.indent(FullIndexWidth + Indent+4);
@@ -881,8 +921,8 @@ EmitMatcher(const Matcher *N, const unsigned Indent, unsigned CurrentIdx,
     } else
       OS << '\n';
 
-    return 5 + !CompressVTs + EN->getNumVTs() + NumOperandBytes +
-           NumCoveredBytes;
+    return 4 + !CompressVTs + !CompressNodeInfo + EN->getNumVTs() +
+           NumOperandBytes + NumCoveredBytes;
   }
   case Matcher::CompleteMatch: {
     const CompleteMatchMatcher *CM = cast<CompleteMatchMatcher>(N);
@@ -1099,6 +1139,8 @@ static StringRef getOpcodeString(Matcher::KindTy Kind) {
     return "OPC_CaptureGlueInput";
   case Matcher::MoveChild:
     return "OPC_MoveChild";
+  case Matcher::MoveSibling:
+    return "OPC_MoveSibling";
   case Matcher::MoveParent:
     return "OPC_MoveParent";
   case Matcher::CheckSame:
