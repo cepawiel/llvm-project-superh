@@ -578,19 +578,35 @@ EmitMatcher(const Matcher *N, const unsigned Indent, unsigned CurrentIdx,
 
  case Matcher::CheckType:
     if (cast<CheckTypeMatcher>(N)->getResNo() == 0) {
-      OS << "OPC_CheckType, "
-         << getEnumName(cast<CheckTypeMatcher>(N)->getType()) << ",\n";
-      return 2;
+      MVT::SimpleValueType VT = cast<CheckTypeMatcher>(N)->getType();
+      switch (VT) {
+      case MVT::i32:
+      case MVT::i64:
+        OS << "OPC_CheckTypeI" << MVT(VT).getSizeInBits() << ",\n";
+        return 1;
+      default:
+        OS << "OPC_CheckType, " << getEnumName(VT) << ",\n";
+        return 2;
+      }
     }
     OS << "OPC_CheckTypeRes, " << cast<CheckTypeMatcher>(N)->getResNo()
        << ", " << getEnumName(cast<CheckTypeMatcher>(N)->getType()) << ",\n";
     return 3;
 
-  case Matcher::CheckChildType:
-    OS << "OPC_CheckChild"
-       << cast<CheckChildTypeMatcher>(N)->getChildNo() << "Type, "
-       << getEnumName(cast<CheckChildTypeMatcher>(N)->getType()) << ",\n";
-    return 2;
+ case Matcher::CheckChildType: {
+   MVT::SimpleValueType VT = cast<CheckChildTypeMatcher>(N)->getType();
+   switch (VT) {
+   case MVT::i32:
+   case MVT::i64:
+     OS << "OPC_CheckChild" << cast<CheckChildTypeMatcher>(N)->getChildNo()
+        << "TypeI" << MVT(VT).getScalarSizeInBits() << ",\n";
+     return 1;
+   default:
+     OS << "OPC_CheckChild" << cast<CheckChildTypeMatcher>(N)->getChildNo()
+        << "Type, " << getEnumName(VT) << ",\n";
+     return 2;
+   }
+ }
 
   case Matcher::CheckInteger: {
     OS << "OPC_CheckInteger, ";
@@ -730,10 +746,15 @@ EmitMatcher(const Matcher *N, const unsigned Indent, unsigned CurrentIdx,
     }
   }
 
-  case Matcher::EmitConvertToTarget:
-    OS << "OPC_EmitConvertToTarget, "
-       << cast<EmitConvertToTargetMatcher>(N)->getSlot() << ",\n";
+  case Matcher::EmitConvertToTarget: {
+    unsigned Slot = cast<EmitConvertToTargetMatcher>(N)->getSlot();
+    if (Slot < 8) {
+      OS << "OPC_EmitConvertToTarget" << Slot << ",\n";
+      return 1;
+    }
+    OS << "OPC_EmitConvertToTarget, " << Slot << ",\n";
     return 2;
+  }
 
   case Matcher::EmitMergeInputChains: {
     const EmitMergeInputChainsMatcher *MN =
@@ -755,14 +776,20 @@ EmitMatcher(const Matcher *N, const unsigned Indent, unsigned CurrentIdx,
     const auto *C2RMatcher = cast<EmitCopyToRegMatcher>(N);
     int Bytes = 3;
     const CodeGenRegister *Reg = C2RMatcher->getDestPhysReg();
+    unsigned Slot = C2RMatcher->getSrcSlot();
     if (Reg->EnumValue > 255) {
       assert(isUInt<16>(Reg->EnumValue) && "not handled");
-      OS << "OPC_EmitCopyToReg2, " << C2RMatcher->getSrcSlot() << ", "
+      OS << "OPC_EmitCopyToRegTwoByte, " << Slot << ", "
          << "TARGET_VAL(" << getQualifiedName(Reg->TheDef) << "),\n";
       ++Bytes;
     } else {
-      OS << "OPC_EmitCopyToReg, " << C2RMatcher->getSrcSlot() << ", "
-         << getQualifiedName(Reg->TheDef) << ",\n";
+      if (Slot < 8) {
+        OS << "OPC_EmitCopyToReg" << Slot << ", "
+           << getQualifiedName(Reg->TheDef) << ",\n";
+        --Bytes;
+      } else
+        OS << "OPC_EmitCopyToReg, " << Slot << ", "
+           << getQualifiedName(Reg->TheDef) << ",\n";
     }
 
     return Bytes;
