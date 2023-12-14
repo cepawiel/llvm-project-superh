@@ -222,6 +222,52 @@ bool ByteCodeExprGen<Emitter>::VisitCastExpr(const CastExpr *CE) {
     return this->emitNE(PtrT, CE);
   }
 
+  case CK_IntegralComplexToBoolean: {
+    std::optional<PrimType> ElemT =
+        classifyComplexElementType(SubExpr->getType());
+    if (!ElemT)
+      return false;
+    // We emit the expression (__real(E) != 0 || __imag(E) != 0)
+    // for us, that means (bool)E[0] || (bool)E[1]
+    if (!this->visit(SubExpr))
+      return false;
+    if (!this->emitConstUint8(0, CE))
+      return false;
+    if (!this->emitArrayElemPtrUint8(CE))
+      return false;
+    if (!this->emitLoadPop(*ElemT, CE))
+      return false;
+    if (!this->emitCast(*ElemT, PT_Bool, CE))
+      return false;
+    // We now have the bool value of E[0] on the stack.
+    LabelTy LabelTrue = this->getLabel();
+    if (!this->jumpTrue(LabelTrue))
+      return false;
+
+    if (!this->emitConstUint8(1, CE))
+      return false;
+    if (!this->emitArrayElemPtrPopUint8(CE))
+      return false;
+    if (!this->emitLoadPop(*ElemT, CE))
+      return false;
+    if (!this->emitCast(*ElemT, PT_Bool, CE))
+      return false;
+    // Leave the boolean value of E[1] on the stack.
+    LabelTy EndLabel = this->getLabel();
+    this->jump(EndLabel);
+
+    this->emitLabel(LabelTrue);
+    if (!this->emitPopPtr(CE))
+      return false;
+    if (!this->emitConstBool(true, CE))
+      return false;
+
+    this->fallthrough(EndLabel);
+    this->emitLabel(EndLabel);
+
+    return true;
+  }
+
   case CK_ToVoid:
     return discard(SubExpr);
 
@@ -667,6 +713,32 @@ bool ByteCodeExprGen<Emitter>::VisitInitListExpr(const InitListExpr *E) {
       if (!this->visitArrayElemInit(ElementIndex, Init))
         return false;
       ++ElementIndex;
+    }
+    return true;
+  }
+
+  if (T->isAnyComplexType()) {
+    unsigned NumInits = E->getNumInits();
+    QualType ElemQT = E->getType()->getAs<ComplexType>()->getElementType();
+    PrimType ElemT = classifyPrim(ElemQT);
+    if (NumInits == 0) {
+      // Zero-initialize both elements.
+      for (unsigned I = 0; I < 2; ++I) {
+        if (!this->visitZeroInitializer(ElemT, ElemQT, E))
+          return false;
+        if (!this->emitInitElem(ElemT, I, E))
+          return false;
+      }
+    } else if (NumInits == 2) {
+      unsigned InitIndex = 0;
+      for (const Expr *Init : E->inits()) {
+        if (!this->visit(Init))
+          return false;
+
+        if (!this->emitInitElem(ElemT, InitIndex, E))
+          return false;
+        ++InitIndex;
+      }
     }
     return true;
   }
@@ -1647,7 +1719,8 @@ template <class Emitter> bool ByteCodeExprGen<Emitter>::visit(const Expr *E) {
     return this->discard(E);
 
   // Create local variable to hold the return value.
-  if (!E->isGLValue() && !classify(E->getType())) {
+  if (!E->isGLValue() && !E->getType()->isAnyComplexType() &&
+      !classify(E->getType())) {
     std::optional<unsigned> LocalIndex = allocateLocal(E, /*IsExtended=*/true);
     if (!LocalIndex)
       return false;
@@ -1832,6 +1905,9 @@ bool ByteCodeExprGen<Emitter>::dereference(
       return false;
     return Indirect(*T);
   }
+
+  if (LV->getType()->isAnyComplexType())
+    return visit(LV);
 
   return false;
 }
@@ -2550,8 +2626,22 @@ bool ByteCodeExprGen<Emitter>::VisitUnaryOperator(const UnaryOperator *E) {
     if (!this->visit(SubExpr))
       return false;
     return DiscardResult ? this->emitPop(*T, E) : this->emitComp(*T, E);
-  case UO_Real:   // __real x
-  case UO_Imag:   // __imag x
+  case UO_Real: { // __real x
+    assert(!T);
+    if (!this->visit(SubExpr))
+      return false;
+    if (!this->emitConstUint8(0, E))
+      return false;
+    return this->emitArrayElemPtrPopUint8(E);
+  }
+  case UO_Imag: { // __imag x
+    assert(!T);
+    if (!this->visit(SubExpr))
+      return false;
+    if (!this->emitConstUint8(1, E))
+      return false;
+    return this->emitArrayElemPtrPopUint8(E);
+  }
   case UO_Extension:
     return this->delegate(SubExpr);
   case UO_Coawait:
