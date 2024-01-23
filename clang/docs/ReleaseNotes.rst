@@ -185,7 +185,8 @@ C++20 Feature Support
 ^^^^^^^^^^^^^^^^^^^^^
 - Implemented `P1907R1 <https://wg21.link/P1907R1>` which extends allowed non-type template argument
   kinds with e.g. floating point values and pointers and references to subobjects.
-  This feature is still experimental. Accordingly, `__cpp_nontype_template_args` was not updated.
+  This feature is still experimental. Accordingly, ``__cpp_nontype_template_args`` was not updated.
+  However, its support can be tested with ``__has_extension(cxx_generalized_nttp)``.
 
 C++23 Feature Support
 ^^^^^^^^^^^^^^^^^^^^^
@@ -194,6 +195,7 @@ C++23 Feature Support
   `CWG2653 <https://wg21.link/CWG2653>`_, `CWG2687 <https://wg21.link/CWG2687>`_). Because the
   support for this feature is still experimental, the feature test macro ``__cpp_explicit_this_parameter``
   was not set in this version.
+  However, its support can be tested with ``__has_extension(cxx_explicit_this_parameter)``.
 
 - Added a separate warning to warn the use of attributes on lambdas as a C++23 extension
   in previous language versions: ``-Wc++23-lambda-attributes``.
@@ -596,6 +598,11 @@ Improvements to Clang's diagnostics
 - Clang now diagnoses narrowing conversions involving const references.
   (`#63151: <https://github.com/llvm/llvm-project/issues/63151>`_).
 - Clang now diagnoses unexpanded packs within the template argument lists of function template specializations.
+- The warning `-Wnan-infinity-disabled` is now emitted when ``INFINITY``
+  or ``NAN`` are used in arithmetic operations or function arguments in
+  floating-point mode where ``INFINITY`` or ``NAN`` don't have the expected
+  values.
+
 - Clang now diagnoses attempts to bind a bitfield to an NTTP of a reference type as erroneous
   converted constant expression and not as a reference to subobject.
 - Clang now diagnoses ``auto`` and ``decltype(auto)`` in declarations of conversion function template
@@ -1040,6 +1047,8 @@ Bug Fixes to C++ Support
 - Remove recorded `#pragma once` state for headers included in named modules.
   Fixes (`#77995 <https://github.com/llvm/llvm-project/issues/77995>`_)
 
+- Set the ``__cpp_auto_cast`` feature test macro in C++23 mode.
+
 Bug Fixes to AST Handling
 ^^^^^^^^^^^^^^^^^^^^^^^^^
 - Fixed an import failure of recursive friend class template.
@@ -1391,9 +1400,11 @@ Improvements
   `0954dc3fb921 <https://github.com/llvm/llvm-project/commit/0954dc3fb9214b994623f5306473de075f8e3593>`_)
 
 - Improved the ``alpha.unix.Stream`` checker by modeling more functions
-  ``fputs``, ``fputc``, ``fgets``, ``fgetc``, ``fdopen``, ``ungetc``, ``fflush``
-  and no not recognize alternative ``fopen`` and ``tmpfile`` implementations.
-  (`#76776 <https://github.com/llvm/llvm-project/pull/76776>`_,
+  ``fputs``, ``fputc``, ``fgets``, ``fgetc``, ``fdopen``, ``ungetc``, ``fflush``,
+  ``getdelim``, ``getline`` and no not recognize alternative
+  ``fopen`` and ``tmpfile`` implementations.
+  (`#78693 <https://github.com/llvm/llvm-project/pull/78693>`_,
+  `#76776 <https://github.com/llvm/llvm-project/pull/76776>`_,
   `#74296 <https://github.com/llvm/llvm-project/pull/74296>`_,
   `#73335 <https://github.com/llvm/llvm-project/pull/73335>`_,
   `#72627 <https://github.com/llvm/llvm-project/pull/72627>`_,
