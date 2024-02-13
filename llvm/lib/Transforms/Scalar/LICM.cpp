@@ -2689,8 +2689,6 @@ static bool hoistMulAddAssociation(Instruction &I, Loop &L,
                                    ICFLoopSafetyInfo &SafetyInfo,
                                    MemorySSAUpdater &MSSAU, AssumptionCache *AC,
                                    DominatorTree *DT) {
-  using namespace PatternMatch;
-
   if (!isReassociableOp(&I, Instruction::Mul, Instruction::FMul))
     return false;
   Value *VariantOp = I.getOperand(0);
@@ -2783,9 +2781,10 @@ static bool hoistArithmetics(Instruction &I, Loop &L,
     return true;
   }
 
+  bool IsInt = I.getType()->isIntOrIntVectorTy();
   if (hoistMulAddAssociation(I, L, SafetyInfo, MSSAU, AC, DT)) {
     ++NumHoisted;
-    if (I.getType()->isIntOrIntVectorTy())
+    if (IsInt)
       ++NumIntAssociationsHoisted;
     else
       ++NumFPAssociationsHoisted;
