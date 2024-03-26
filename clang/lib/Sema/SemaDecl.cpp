@@ -8837,7 +8837,7 @@ void Sema::CheckVariableDeclarationType(VarDecl *NewVD) {
       return;
     }
     const auto *ATy = dyn_cast<ConstantArrayType>(T.getTypePtr());
-    if (!ATy || ATy->getSize().getSExtValue() != 0) {
+    if (!ATy || ATy->getZExtSize() != 0) {
       Diag(NewVD->getLocation(),
            diag::err_typecheck_wasm_table_must_have_zero_length);
       NewVD->setInvalidDecl();
@@ -11650,7 +11650,7 @@ static bool CheckMultiVersionAdditionalDecl(
   const auto *NewTA = NewFD->getAttr<TargetAttr>();
   const auto *NewTVA = NewFD->getAttr<TargetVersionAttr>();
   MultiVersionKind NewMVKind = NewFD->getMultiVersionKind();
-  MultiVersionKind OldMVKind = OldFD->getMultiVersionKind();
+  [[maybe_unused]] MultiVersionKind OldMVKind = OldFD->getMultiVersionKind();
 
   ParsedTargetAttr NewParsed;
   if (NewTA) {
