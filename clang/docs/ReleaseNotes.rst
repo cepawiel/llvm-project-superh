@@ -214,6 +214,9 @@ New Compiler Flags
   This diagnostic can be disabled to make ``-Wmissing-field-initializers`` behave
   like it did before Clang 18.x. Fixes #GH56628
 
+- ``-fexperimental-modules-reduced-bmi`` enables the Reduced BMI for C++20 named modules.
+  See the document of standard C++ modules for details.
+
 Deprecated Compiler Flags
 -------------------------
 
@@ -531,7 +534,6 @@ Bug Fixes to C++ Support
   Fixes (#GH70604), (#GH79754), (#GH84163), (#GH84425), (#GH86054), (#GH86398), and (#GH86399).
 - Fix a crash when deducing ``auto`` from an invalid dereference (#GH88329).
 - Fix a crash in requires expression with templated base class member function. Fixes (#GH84020).
-- Placement new initializes typedef array with correct size (#GH41441)
 
 Bug Fixes to AST Handling
 ^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -676,6 +678,8 @@ Static Analyzer
   but not under any case blocks if ``unroll-loops=true`` analyzer config is
   set. (#GH68819)
 - Support C++23 static operator calls. (#GH84972)
+- Fixed a crash in ``security.cert.env.InvalidPtr`` checker when accidentally
+  matched user-defined ``strerror`` and similar library functions. (GH#88181)
 
 New features
 ^^^^^^^^^^^^
