@@ -807,8 +807,12 @@ def gcc_install_dir_EQ : Joined<["--"], "gcc-install-dir=">,
   "Note: executables (e.g. ld) used by the compiler are not overridden by the selected GCC installation">;
 def gcc_toolchain : Joined<["--"], "gcc-toolchain=">, Flags<[NoXarchOption]>,
   Visibility<[ClangOption, FlangOption]>,
-  HelpText<"Specify a directory where Clang can find 'include' and 'lib{,32,64}/gcc{,-cross}/$triple/$version'. "
-  "Clang will use the GCC installation with the largest version">;
+  HelpText<
+    "Specify a directory where Clang can find 'include' and 'lib{,32,64}/gcc{,-cross}/$triple/$version'. "
+    "Clang will use the GCC installation with the largest version">,
+  HelpTextForVariants<[FlangOption],
+    "Specify a directory where Flang can find 'lib{,32,64}/gcc{,-cross}/$triple/$version'. "
+    "Flang will use the GCC installation with the largest version">;
 def gcc_triple_EQ : Joined<["--"], "gcc-triple=">,
   HelpText<"Search for the GCC installation with the specified triple.">;
 def CC : Flag<["-"], "CC">, Visibility<[ClangOption, CC1Option]>,
@@ -5034,6 +5038,12 @@ defm regnames : BoolMOption<"regnames",
 def maix_small_local_exec_tls : Flag<["-"], "maix-small-local-exec-tls">,
   Group<m_ppc_Features_Group>,
   HelpText<"Produce a faster access sequence for local-exec TLS variables "
+           "where the offset from the TLS base is encoded as an "
+           "immediate operand (AIX 64-bit only). "
+           "This access sequence is not used for variables larger than 32KB.">;
+def maix_small_local_dynamic_tls : Flag<["-"], "maix-small-local-dynamic-tls">,
+  Group<m_ppc_Features_Group>,
+  HelpText<"Produce a faster access sequence for local-dynamic TLS variables "
            "where the offset from the TLS base is encoded as an "
            "immediate operand (AIX 64-bit only). "
            "This access sequence is not used for variables larger than 32KB.">;
