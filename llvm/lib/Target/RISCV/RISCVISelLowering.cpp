@@ -13449,9 +13449,8 @@ static SDValue expandMul(SDNode *N, SelectionDAG &DAG,
       SDValue X = DAG.getFreeze(N->getOperand(0));
       SDValue Shift1 =
           DAG.getNode(ISD::SHL, DL, VT, X, DAG.getConstant(ShiftAmt, DL, VT));
-      SDValue Shift2 =
-          DAG.getNode(ISD::SHL, DL, VT, X, DAG.getConstant(ScaleShift, DL, VT));
-      return DAG.getNode(ISD::ADD, DL, VT, Shift1, Shift2);
+      return DAG.getNode(RISCVISD::SHL_ADD, DL, VT, X,
+                         DAG.getConstant(ScaleShift, DL, VT), Shift1);
     }
   }
 
@@ -13485,10 +13484,23 @@ static SDValue expandMul(SDNode *N, SelectionDAG &DAG,
       SDValue X = DAG.getFreeze(N->getOperand(0));
       SDValue Shift1 =
           DAG.getNode(ISD::SHL, DL, VT, X, DAG.getConstant(ShiftAmt, DL, VT));
-      SDValue Shift2 =
-          DAG.getNode(ISD::SHL, DL, VT, X, DAG.getConstant(ScaleShift, DL, VT));
       return DAG.getNode(ISD::ADD, DL, VT, Shift1,
-                         DAG.getNode(ISD::ADD, DL, VT, Shift2, X));
+                         DAG.getNode(RISCVISD::SHL_ADD, DL, VT, X,
+                                     DAG.getConstant(ScaleShift, DL, VT), X));
+    }
+  }
+
+  // 2^N - 3/5/9 --> (sub (shl X, C1), (shXadd X, x))
+  for (uint64_t Offset : {3, 5, 9}) {
+    if (isPowerOf2_64(MulAmt + Offset)) {
+      SDLoc DL(N);
+      SDValue Shift1 =
+          DAG.getNode(ISD::SHL, DL, VT, N->getOperand(0),
+                      DAG.getConstant(Log2_64(MulAmt + Offset), DL, VT));
+      SDValue Mul359 = DAG.getNode(RISCVISD::SHL_ADD, DL, VT, N->getOperand(0),
+                                   DAG.getConstant(Log2_64(Offset - 1), DL, VT),
+                                   N->getOperand(0));
+      return DAG.getNode(ISD::SUB, DL, VT, Shift1, Mul359);
     }
   }
 
@@ -16834,7 +16846,7 @@ SDValue RISCVTargetLowering::PerformDAGCombine(SDNode *N,
           StrideC && StrideC->getZExtValue() == ElementSize)
         return DAG.getMaskedStore(Store->getChain(), DL, Value, Base,
                                   DAG.getUNDEF(XLenVT), Mask,
-                                  Store->getMemoryVT(), Store->getMemOperand(),
+                                  Value.getValueType(), Store->getMemOperand(),
                                   ISD::UNINDEXED, false);
       return SDValue();
     }
@@ -18149,7 +18161,7 @@ void RISCVTargetLowering::AdjustInstrPostInstrSelection(MachineInstr &MI,
   if (MI.getOperand(Idx).getImm() != RISCVFPRndMode::DYN)
     return;
   // If the instruction already reads FRM, don't add another read.
-  if (MI.readsRegister(RISCV::FRM))
+  if (MI.readsRegister(RISCV::FRM, /*TRI=*/nullptr))
     return;
   MI.addOperand(
       MachineOperand::CreateReg(RISCV::FRM, /*isDef*/ false, /*isImp*/ true));
