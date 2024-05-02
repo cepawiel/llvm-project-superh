@@ -2430,6 +2430,8 @@ bool ByteCodeExprGen<Emitter>::VisitCXXUuidofExpr(const CXXUuidofExpr *E) {
 template <class Emitter>
 bool ByteCodeExprGen<Emitter>::VisitRequiresExpr(const RequiresExpr *E) {
   assert(classifyPrim(E->getType()) == PT_Bool);
+  if (DiscardResult)
+    return true;
   return this->emitConstBool(E->isSatisfied(), E);
 }
 
@@ -2437,6 +2439,8 @@ template <class Emitter>
 bool ByteCodeExprGen<Emitter>::VisitConceptSpecializationExpr(
     const ConceptSpecializationExpr *E) {
   assert(classifyPrim(E->getType()) == PT_Bool);
+  if (DiscardResult)
+    return true;
   return this->emitConstBool(E->isSatisfied(), E);
 }
 
