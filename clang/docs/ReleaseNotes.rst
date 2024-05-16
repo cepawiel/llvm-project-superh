@@ -51,9 +51,13 @@ C++ Specific Potentially Breaking Changes
 - The behavior controlled by the `-frelaxed-template-template-args` flag is now
   on by default, and the flag is deprecated. Until the flag is finally removed,
   it's negative spelling can be used to obtain compatibility with previous
-  versions of clang.
+  versions of clang. The deprecation warning for the negative spelling can be
+  disabled with `-Wno-deprecated-no-relaxed-template-template-args`.
 
 - Clang now rejects pointer to member from parenthesized expression in unevaluated context such as ``decltype(&(foo::bar))``. (#GH40906).
+
+- Clang now performs semantic analysis for unary operators with dependent operands
+  that are known to be of non-class non-enumeration type prior to instantiation.
 
 ABI Changes in This Version
 ---------------------------
@@ -113,6 +117,9 @@ Clang Frontend Potentially Breaking Changes
 
     $ clang --target=<your target triple> -print-target-triple
     <the normalized target triple>
+
+- The ``hasTypeLoc`` AST matcher will no longer match a ``classTemplateSpecializationDecl``;
+  existing uses should switch to ``templateArgumentLoc`` or ``hasAnyTemplateArgumentLoc`` instead.
 
 What's New in Clang |release|?
 ==============================
@@ -710,6 +717,9 @@ Bug Fixes to C++ Support
 - Correctly treat the compound statement of an ``if consteval`` as an immediate context. Fixes (#GH91509).
 - When partial ordering alias templates against template template parameters,
   allow pack expansions when the alias has a fixed-size parameter list. Fixes (#GH62529).
+- Clang now ignores template parameters only used within the exception specification of candidate function
+  templates during partial ordering when deducing template arguments from a function declaration or when
+  taking the address of a function template.
 
 Bug Fixes to AST Handling
 ^^^^^^^^^^^^^^^^^^^^^^^^^
