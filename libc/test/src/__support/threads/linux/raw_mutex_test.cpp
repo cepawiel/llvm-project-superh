@@ -6,6 +6,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "hdr/signal_macros.h"
 #include "include/llvm-libc-macros/linux/time-macros.h"
 #include "src/__support/CPP/atomic.h"
 #include "src/__support/OSUtil/syscall.h"
@@ -63,7 +64,11 @@ TEST(LlvmLibcSupportThreadsRawMutexTest, PSharedLock) {
   shared->data = 0;
   LIBC_NAMESPACE::RawMutex::init(&shared->mutex);
   // Avoid pull in our own implementation of pthread_t.
+#ifdef SYS_fork
   long pid = LIBC_NAMESPACE::syscall_impl<long>(SYS_fork);
+#elif defined(SYS_clone)
+  long pid = LIBC_NAMESPACE::syscall_impl<long>(SYS_clone, SIGCHLD, 0);
+#endif
   for (int i = 0; i < 10000; ++i) {
     shared->mutex.lock(LIBC_NAMESPACE::cpp::nullopt, true);
     shared->data++;
