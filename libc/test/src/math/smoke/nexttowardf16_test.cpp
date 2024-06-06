@@ -1,4 +1,4 @@
-//===-- Unittests for ceilf16 ---------------------------------------------===//
+//===-- Unittests for nexttowardf16 ---------------------------------------===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -6,8 +6,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "CeilTest.h"
+#include "NextTowardTest.h"
 
-#include "src/math/ceilf16.h"
+#include "src/math/nexttowardf16.h"
 
-LIST_CEIL_TESTS(float16, LIBC_NAMESPACE::ceilf16)
+LIST_NEXTTOWARD_TESTS(float16, LIBC_NAMESPACE::nexttowardf16)

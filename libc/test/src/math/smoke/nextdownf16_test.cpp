@@ -1,4 +1,4 @@
-//===-- Unittests for roundf16 --------------------------------------------===//
+//===-- Unittests for nextdownf16 -----------------------------------------===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -6,8 +6,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "RoundTest.h"
+#include "NextDownTest.h"
 
-#include "src/math/roundf16.h"
+#include "src/math/nextdownf16.h"
 
-LIST_ROUND_TESTS(float16, LIBC_NAMESPACE::roundf16)
+LIST_NEXTDOWN_TESTS(float16, LIBC_NAMESPACE::nextdownf16)

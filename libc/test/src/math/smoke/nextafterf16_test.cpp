@@ -1,4 +1,4 @@
-//===-- Unittests for floorf16 --------------------------------------------===//
+//===-- Unittests for nextafterf16 ----------------------------------------===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -6,8 +6,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "FloorTest.h"
+#include "NextAfterTest.h"
 
-#include "src/math/floorf16.h"
+#include "src/math/nextafterf16.h"
 
-LIST_FLOOR_TESTS(float16, LIBC_NAMESPACE::floorf16)
+LIST_NEXTAFTER_TESTS(float16, LIBC_NAMESPACE::nextafterf16)
