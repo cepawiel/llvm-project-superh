@@ -138,9 +138,8 @@ readBinaryIdsInternal(const MemoryBuffer &DataBuffer,
   return Error::success();
 }
 
-static void
-printBinaryIdsInternal(raw_ostream &OS,
-                       const std::vector<llvm::object::BuildID> &BinaryIds) {
+static void printBinaryIdsInternal(raw_ostream &OS,
+                                   ArrayRef<llvm::object::BuildID> BinaryIds) {
   OS << "Binary IDs: \n";
   for (const auto &BI : BinaryIds) {
     for (auto I : BI)
@@ -1398,14 +1397,16 @@ Error IndexedInstrProfReader::readHeader() {
   if (Header->getIndexedProfileVersion() >= 12) {
     const unsigned char *Ptr = Start + Header->VTableNamesOffset;
 
-    CompressedVTableNamesLen =
+    uint64_t CompressedVTableNamesLen =
         support::endian::readNext<uint64_t, llvm::endianness::little>(Ptr);
 
     // Writer first writes the length of compressed string, and then the actual
     // content.
-    VTableNamePtr = (const char *)Ptr;
+    const char *VTableNamePtr = (const char *)Ptr;
     if (VTableNamePtr > (const char *)DataBuffer->getBufferEnd())
       return make_error<InstrProfError>(instrprof_error::truncated);
+
+    VTableName = StringRef(VTableNamePtr, CompressedVTableNamesLen);
   }
 
   if (Header->getIndexedProfileVersion() >= 10 &&
@@ -1461,8 +1462,7 @@ InstrProfSymtab &IndexedInstrProfReader::getSymtab() {
 
   auto NewSymtab = std::make_unique<InstrProfSymtab>();
 
-  if (Error E = NewSymtab->initVTableNamesFromCompressedStrings(
-          StringRef(VTableNamePtr, CompressedVTableNamesLen))) {
+  if (Error E = NewSymtab->initVTableNamesFromCompressedStrings(VTableName)) {
     auto [ErrCode, Msg] = InstrProfError::take(std::move(E));
     consumeError(error(ErrCode, Msg));
   }
@@ -1502,7 +1502,7 @@ Expected<InstrProfRecord> IndexedInstrProfReader::getInstrProfRecord(
   // A flag to indicate if the records are from the same type
   // of profile (i.e cs vs nocs).
   bool CSBitMatch = false;
-  auto getFuncSum = [](const std::vector<uint64_t> &Counts) {
+  auto getFuncSum = [](ArrayRef<uint64_t> Counts) {
     uint64_t ValueSum = 0;
     for (uint64_t CountValue : Counts) {
       if (CountValue == (uint64_t)-1)
