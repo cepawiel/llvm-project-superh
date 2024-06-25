@@ -1631,6 +1631,27 @@ Currently, only the following parameter attributes are defined:
     ``readonly`` or a ``memory`` attribute that does not contain
     ``argmem: write``.
 
+``initializes((Lo1, Hi1), ...)``
+    This attribute indicates that the function initializes the ranges of the
+    pointer parameter's memory, ``[%p+LoN, %p+HiN)``. Initialization of memory
+    means the first memory access is a non-volatile, non-atomic write. The
+    write must happen before the function returns. If the function unwinds,
+    the write may not happen.
+
+    This attribute only holds for the memory accessed via this pointer
+    parameter. Other arbitrary accesses to the same memory via other pointers
+    are allowed.
+
+    The ``writable`` or ``dereferenceable`` attribute do not imply the
+    ``initializes`` attribute. The ``initializes`` attribute does not imply
+    ``writeonly`` since ``initializes`` allows reading from the pointer
+    after writing.
+
+    This attribute is a list of constant ranges in ascending order with no
+    overlapping or consecutive list elements. ``LoN/HiN`` are 64-bit integers,
+    and negative values are allowed in case the argument points partway into
+    an allocation. An empty list is not allowed.
+
 ``dead_on_unwind``
     At a high level, this attribute indicates that the pointer argument is dead
     if the call unwinds, in the sense that the caller will not depend on the
@@ -29338,7 +29359,7 @@ Lowering:
 Lowers to a call to `objc_storeWeak <https://clang.llvm.org/docs/AutomaticReferenceCounting.html#arc-runtime-objc-storeweak>`_.
 
 Preserving Debug Information Intrinsics
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+---------------------------------------
 
 These intrinsics are used to carry certain debuginfo together with
 IR-level operations. For example, it may be desirable to
