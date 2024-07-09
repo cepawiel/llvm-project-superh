@@ -236,9 +236,6 @@ C++20 Feature Support
   ``<expected>`` from libstdc++ to work correctly with Clang.
 
 - User defined constructors are allowed for copy-list-initialization with CTAD.
-  The example code for deduction guides for std::map in
-  (`cppreference <https://en.cppreference.com/w/cpp/container/map/deduction_guides>`_)
-  will now work.
   (#GH62925).
 
 C++23 Feature Support
@@ -351,6 +348,9 @@ C23 Feature Support
   but C23 added them to ``<float.h>`` in
   `WG14 N2848 <https://www.open-std.org/jtc1/sc22/wg14/www/docs/n2848.pdf>`_.
 
+- Clang now supports `N3017 <https://www.open-std.org/jtc1/sc22/wg14/www/docs/n3017.htm>`_
+  ``#embed`` - a scannable, tooling-friendly binary resource inclusion mechanism.
+
 Non-comprehensive list of changes in this release
 -------------------------------------------------
 
@@ -439,8 +439,16 @@ New Compiler Flags
   Matches MSVC behaviour by defining ``__STDC__`` to ``1`` when
   MSVC compatibility mode is used. It has no effect for C++ code.
 
+- ``-Wc++23-compat`` group was added to help migrating existing codebases
+  to C++23.
+
 - ``-Wc++2c-compat`` group was added to help migrating existing codebases
-  to C++26.
+  to upcoming C++26.
+
+- ``-fdisable-block-signature-string`` instructs clang not to emit the signature
+  string for blocks. Disabling the string can potentially break existing code
+  that relies on it. Users should carefully consider this possibiilty when using
+  the flag.
 
 Deprecated Compiler Flags
 -------------------------
@@ -479,6 +487,10 @@ Modified Compiler Flags
 - Trivial infinite loops (i.e loops with a constant controlling expresion
   evaluating to ``true`` and an empty body such as ``while(1);``)
   are considered infinite, even when the ``-ffinite-loop`` flag is set.
+
+- Diagnostics groups about compatibility with a particular C++ Standard version
+  now include dianostics about C++26 features that are not present in older
+  versions.
 
 Removed Compiler Flags
 -------------------------
@@ -542,6 +554,10 @@ Attribute Changes in Clang
        size_t count;
      };
 
+- The ``guarded_by``, ``pt_guarded_by``, ``acquired_after``, ``acquired_before``
+  attributes now support referencing struct members in C. The arguments are also
+  now late parsed when ``-fexperimental-late-parse-attributes`` is passed like
+  for ``counted_by``.
 
 - Introduced new function type attributes ``[[clang::nonblocking]]``, ``[[clang::nonallocating]]``,
   ``[[clang::blocking]]``, and ``[[clang::allocating]]``, with GNU-style variants as well.
@@ -955,6 +971,7 @@ Bug Fixes to C++ Support
 - Fix a crash caused by improper use of ``__array_extent``. (#GH80474)
 - Fixed several bugs in capturing variables within unevaluated contexts. (#GH63845), (#GH67260), (#GH69307),
   (#GH88081), (#GH89496), (#GH90669) and (#GH91633).
+- Fixed a crash in constraint instantiation under nested lambdas with dependent parameters.
 - Fixed handling of brace ellison when building deduction guides. (#GH64625), (#GH83368).
 - Clang now instantiates local constexpr functions eagerly for constant evaluators. (#GH35052), (#GH94849)
 - Fixed a failed assertion when attempting to convert an integer representing the difference
@@ -967,6 +984,10 @@ Bug Fixes to C++ Support
 - Fixed an assertion failure about invalid conversion when calling lambda. (#GH96205).
 - Fixed a bug where the first operand of binary ``operator&`` would be transformed as if it was the operand
   of the address of operator. (#GH97483).
+- Fixed an assertion failure about a constant expression which is a known integer but is not
+  evaluated to an integer. (#GH96670).
+- Fixed a bug where references to lambda capture inside a ``noexcept`` specifier were not correctly
+  instantiated. (#GH95735).
 
 Bug Fixes to AST Handling
 ^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -1076,6 +1097,7 @@ RISC-V Support
 
 - ``__attribute__((rvv_vector_bits(N)))`` is now supported for RVV vbool*_t types.
 - Profile names in ``-march`` option are now supported.
+- Passing empty structs/unions as arguments in C++ is now handled correctly. The behavior is similar to GCC's.
 
 CUDA/HIP Language Changes
 ^^^^^^^^^^^^^^^^^^^^^^^^^
