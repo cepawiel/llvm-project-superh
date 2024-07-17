@@ -1031,9 +1031,6 @@ def err_opencl_invalid_param : Error<
 def err_opencl_invalid_return : Error<
   "declaring function return value of type %0 is not allowed %select{; did you forget * ?|}1">;
 def warn_enum_value_overflow : Warning<"overflow in enumeration value">;
-def warn_missing_format_attribute : Warning<
-  "diagnostic behavior may be improved by adding the %0 format attribute to the declaration of %1">,
-  InGroup<DiagGroup<"missing-format-attribute">>, DefaultIgnore;
 def warn_pragma_options_align_reset_failed : Warning<
   "#pragma options align=reset failed: %0">,
   InGroup<IgnoredPragmas>;
@@ -7252,7 +7249,10 @@ def err_array_init_utf8_string_into_char : Error<
 def warn_cxx20_compat_utf8_string : Warning<
   "type of UTF-8 string literal will change from array of const char to "
   "array of const char8_t in C++20">, InGroup<CXX20Compat>, DefaultIgnore;
-def note_cxx20_compat_utf8_string_remove_u8 : Note<
+def warn_c23_compat_utf8_string : Warning<
+  "type of UTF-8 string literal will change from array of char to "
+  "array of char8_t in C23">, InGroup<C23Compat>, DefaultIgnore;
+def note_cxx20_c23_compat_utf8_string_remove_u8 : Note<
   "remove 'u8' prefix to avoid a change of behavior; "
   "Clang encodes unprefixed narrow string literals as UTF-8">;
 def err_array_init_different_type : Error<
@@ -7580,6 +7580,8 @@ def err_explicit_object_lambda_ambiguous_base : Error<
 def err_explicit_object_lambda_inaccessible_base : Error<
   "invalid explicit object parameter type %0 in lambda with capture; "
   "the type must derive publicly from the lambda">;
+def err_explicit_object_parameter_invalid: Error<
+  "an explicit object parameter can only appear as the first parameter of a member function">;
 
 def err_ref_qualifier_overload : Error<
   "cannot overload a member function %select{without a ref-qualifier|with "
