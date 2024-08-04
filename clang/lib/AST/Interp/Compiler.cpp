@@ -733,8 +733,8 @@ bool Compiler<Emitter>::VisitBinaryOperator(const BinaryOperator *BO) {
   }
 
   // Typecheck the args.
-  std::optional<PrimType> LT = classify(LHS->getType());
-  std::optional<PrimType> RT = classify(RHS->getType());
+  std::optional<PrimType> LT = classify(LHS);
+  std::optional<PrimType> RT = classify(RHS);
   std::optional<PrimType> T = classify(BO->getType());
 
   // Special case for C++'s three-way/spaceship operator <=>, which
@@ -769,8 +769,16 @@ bool Compiler<Emitter>::VisitBinaryOperator(const BinaryOperator *BO) {
       return this->VisitPointerArithBinOp(BO);
   }
 
-  if (!visit(LHS) || !visit(RHS))
-    return false;
+  // Assignmentes require us to evalute the RHS first.
+  if (BO->getOpcode() == BO_Assign) {
+    if (!visit(RHS) || !visit(LHS))
+      return false;
+    if (!this->emitFlip(*LT, *RT, BO))
+      return false;
+  } else {
+    if (!visit(LHS) || !visit(RHS))
+      return false;
+  }
 
   // For languages such as C, cast the result of one
   // of our comparision opcodes to T (which is usually int).
@@ -3969,7 +3977,19 @@ bool Compiler<Emitter>::VisitCallExpr(const CallExpr *E) {
     }
   }
 
-  auto Args = llvm::ArrayRef(E->getArgs(), E->getNumArgs());
+  SmallVector<const Expr *, 8> Args(
+      llvm::ArrayRef(E->getArgs(), E->getNumArgs()));
+
+  bool IsAssignmentOperatorCall = false;
+  if (const auto *OCE = dyn_cast<CXXOperatorCallExpr>(E);
+      OCE && OCE->isAssignmentOp()) {
+    // Just like with regular assignments, we need to special-case assignment
+    // operators here and evaluate the RHS (the second arg) before the LHS (the
+    // first arg. We fix this by using a Flip op later.
+    assert(Args.size() == 2);
+    IsAssignmentOperatorCall = true;
+    std::reverse(Args.begin(), Args.end());
+  }
   // Calling a static operator will still
   // pass the instance, but we don't need it.
   // Discard it here.
@@ -3978,7 +3998,8 @@ bool Compiler<Emitter>::VisitCallExpr(const CallExpr *E) {
         MD && MD->isStatic()) {
       if (!this->discard(E->getArg(0)))
         return false;
-      Args = Args.drop_front();
+      // Drop first arg.
+      Args.erase(Args.begin());
     }
   }
 
@@ -4003,6 +4024,13 @@ bool Compiler<Emitter>::VisitCallExpr(const CallExpr *E) {
     } else if (!this->visit(MC->getImplicitObjectArgument())) {
       return false;
     }
+  } else if (!FuncDecl) {
+    const Expr *Callee = E->getCallee();
+    CalleeOffset = this->allocateLocalPrimitive(Callee, PT_FnPtr, true, false);
+    if (!this->visit(Callee))
+      return false;
+    if (!this->emitSetLocal(PT_FnPtr, *CalleeOffset, E))
+      return false;
   }
 
   llvm::BitVector NonNullArgs = collectNonNullArgs(FuncDecl, Args);
@@ -4021,6 +4049,15 @@ bool Compiler<Emitter>::VisitCallExpr(const CallExpr *E) {
       }
     }
     ++ArgIndex;
+  }
+
+  // Undo the argument reversal we did earlier.
+  if (IsAssignmentOperatorCall) {
+    assert(Args.size() == 2);
+    PrimType Arg1T = classify(Args[0]).value_or(PT_Ptr);
+    PrimType Arg2T = classify(Args[1]).value_or(PT_Ptr);
+    if (!this->emitFlip(Arg2T, Arg1T, E))
+      return false;
   }
 
   if (FuncDecl) {
@@ -4071,22 +4108,19 @@ bool Compiler<Emitter>::VisitCallExpr(const CallExpr *E) {
     for (unsigned I = 0, N = E->getNumArgs(); I != N; ++I)
       ArgSize += align(primSize(classify(E->getArg(I)).value_or(PT_Ptr)));
 
-    // Get the callee, either from a member pointer saved in CalleeOffset,
-    // or by just visiting the Callee expr.
-    if (CalleeOffset) {
+    // Get the callee, either from a member pointer or function pointer saved in
+    // CalleeOffset.
+    if (isa<CXXMemberCallExpr>(E) && CalleeOffset) {
       if (!this->emitGetLocal(PT_MemberPtr, *CalleeOffset, E))
         return false;
       if (!this->emitGetMemberPtrDecl(E))
         return false;
-      if (!this->emitCallPtr(ArgSize, E, E))
-        return false;
     } else {
-      if (!this->visit(E->getCallee()))
-        return false;
-
-      if (!this->emitCallPtr(ArgSize, E, E))
+      if (!this->emitGetLocal(PT_FnPtr, *CalleeOffset, E))
         return false;
     }
+    if (!this->emitCallPtr(ArgSize, E, E))
+      return false;
   }
 
   // Cleanup for discarded return values.
