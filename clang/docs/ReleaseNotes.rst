@@ -107,19 +107,6 @@ C++ Language Changes
   constant expression. Supports the `V.xyzw` syntax and other tidbits
   as seen in OpenCL. Selecting multiple elements is left as a future work.
 
-C++17 Feature Support
-^^^^^^^^^^^^^^^^^^^^^
-
-C++14 Feature Support
-^^^^^^^^^^^^^^^^^^^^^
-
-C++20 Feature Support
-^^^^^^^^^^^^^^^^^^^^^
-
-C++23 Feature Support
-^^^^^^^^^^^^^^^^^^^^^
-- Removed the restriction to literal types in constexpr functions in C++23 mode.
-
 C++2c Feature Support
 ^^^^^^^^^^^^^^^^^^^^^
 
@@ -130,6 +117,16 @@ C++2c Feature Support
   `P2985R0 A type trait for detecting virtual base classes <https://wg21.link/p2985r0>`_
 
 - Implemented `P2893R3 Variadic Friends <https://wg21.link/P2893>`_
+
+- Implemented `P2747R2 constexpr placement new <https://wg21.link/P2747R2>`_.
+
+C++23 Feature Support
+^^^^^^^^^^^^^^^^^^^^^
+- Removed the restriction to literal types in constexpr functions in C++23 mode.
+
+C++20 Feature Support
+^^^^^^^^^^^^^^^^^^^^^
+
 
 Resolutions to C++ Defect Reports
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -177,10 +174,12 @@ New Compiler Flags
 Deprecated Compiler Flags
 -------------------------
 
+- ``-fheinous-gnu-extensions`` is deprecated; it is now equivalent to
+  specifying ``-Wno-error=invalid-gnu-asm-cast`` and may be removed in the
+  future.
+
 Modified Compiler Flags
 -----------------------
-
-- The compiler flag `-fbracket-depth` default value is increased from 256 to 2048.
 
 - The ``-ffp-model`` option has been updated to enable a more limited set of
   optimizations when the ``fast`` argument is used and to accept a new argument,
@@ -239,6 +238,15 @@ Improvements to Clang's diagnostics
 
 - Clang now diagnoses when the result of a [[nodiscard]] function is discarded after being cast in C. Fixes #GH104391.
 
+- Don't emit duplicated dangling diagnostics. (#GH93386).
+
+- Improved diagnostic when trying to befriend a concept. (#GH45182).
+
+- Added the ``-Winvalid-gnu-asm-cast`` diagnostic group to control warnings
+  about use of "noop" casts for lvalues (a GNU extension). This diagnostic is
+  a warning which defaults to being an error, is enabled by default, and is
+  also controlled by the now-deprecated ``-fheinous-gnu-extensions`` flag.
+
 Improvements to Clang's time-trace
 ----------------------------------
 
@@ -292,6 +300,8 @@ Bug Fixes to C++ Support
 - Correctly check constraints of explicit instantiations of member functions. (#GH46029)
 - Fixed an assertion failure about a constraint of a friend function template references to a value with greater
   template depth than the friend function template. (#GH98258)
+- Clang now rebuilds the template parameters of out-of-line declarations and specializations in the context
+  of the current instantiation in all cases.
 
 Bug Fixes to AST Handling
 ^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -309,6 +319,12 @@ Miscellaneous Clang Crashes Fixed
 
 - Fixed a crash caused by long chains of ``sizeof`` and other similar operators
   that can be followed by a non-parenthesized expression. (#GH45061)
+
+- Fixed an crash when compiling ``#pragma STDC FP_CONTRACT DEFAULT`` with
+  ``-ffp-contract=fast-honor-pragmas``. (#GH104830)
+
+- Fixed a crash when function has more than 65536 parameters.
+  Now a diagnostic is emitted. (#GH35741)
 
 OpenACC Specific Changes
 ------------------------
@@ -442,18 +458,29 @@ Moved checkers
 
 Sanitizers
 ----------
+- Introduced Realtime Sanitizer, activated by using the -fsanitize=realtime
+  flag. This sanitizer detects unsafe system library calls, such as memory
+  allocations and mutex locks. If any such function is called during invocation
+  of a function marked with the ``[[clang::nonblocking]]`` attribute, an error
+  is printed to the console and the process exits non-zero.
 
 - Added the ``-fsanitize-undefined-ignore-overflow-pattern`` flag which can be
   used to disable specific overflow-dependent code patterns. The supported
-  patterns are: ``add-overflow-test``, ``negated-unsigned-const``, and
-  ``post-decr-while``. The sanitizer instrumentation can be toggled off for all
-  available patterns by specifying ``all``. Conversely, you can disable all
-  exclusions with ``none``.
+  patterns are: ``add-signed-overflow-test``, ``add-unsigned-overflow-test``,
+  ``negated-unsigned-const``, and ``unsigned-post-decr-while``. The sanitizer
+  instrumentation can be toggled off for all available patterns by specifying
+  ``all``. Conversely, you may disable all exclusions with ``none`` which is
+  the default.
 
   .. code-block:: c++
 
-     /// specified with ``-fsanitize-undefined-ignore-overflow-pattern=add-overflow-test``
+     /// specified with ``-fsanitize-undefined-ignore-overflow-pattern=add-unsigned-overflow-test``
      int common_overflow_check_pattern(unsigned base, unsigned offset) {
+       if (base + offset < base) { /* ... */ } // The pattern of `a + b < a`, and other re-orderings, won't be instrumented
+     }
+
+     /// specified with ``-fsanitize-undefined-ignore-overflow-pattern=add-signed-overflow-test``
+     int common_overflow_check_pattern_signed(signed int base, signed int offset) {
        if (base + offset < base) { /* ... */ } // The pattern of `a + b < a`, and other re-orderings, won't be instrumented
      }
 
@@ -463,10 +490,10 @@ Sanitizers
        unsigned long bar = -2UL; // and so on...
      }
 
-     /// specified with ``-fsanitize-undefined-ignore-overflow-pattern=post-decr-while``
+     /// specified with ``-fsanitize-undefined-ignore-overflow-pattern=unsigned-post-decr-while``
      void while_post_decrement() {
        unsigned char count = 16;
-       while (count--) { /* ... */} // No longer causes unsigned-integer-overflow sanitizer to trip
+       while (count--) { /* ... */ } // No longer causes unsigned-integer-overflow sanitizer to trip
      }
 
   Many existing projects have a large amount of these code patterns present.
