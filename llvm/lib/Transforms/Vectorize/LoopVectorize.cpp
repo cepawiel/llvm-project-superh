@@ -6817,6 +6817,9 @@ void LoopVectorizationCostModel::collectValuesToIgnore() {
     if (auto *Br = dyn_cast_or_null<BranchInst>(Op)) {
       BasicBlock *ThenBB = Br->getSuccessor(0);
       BasicBlock *ElseBB = Br->getSuccessor(1);
+      // Don't considers branches leaving the loop for simplification.
+      if (!TheLoop->contains(ThenBB) || !TheLoop->contains(ElseBB))
+        continue;
       bool ThenEmpty = IsEmptyBlock(ThenBB);
       bool ElseEmpty = IsEmptyBlock(ElseBB);
       if ((ThenEmpty && ElseEmpty) ||
@@ -7147,7 +7150,12 @@ LoopVectorizationPlanner::precomputeCosts(VPlan &Plan, ElementCount VF,
     if (!OrigLoop->contains(CondI) ||
         !CostCtx.SkipCostComputation.insert(CondI).second)
       continue;
-    Cost += CostCtx.getLegacyCost(CondI, VF);
+    InstructionCost CondICost = CostCtx.getLegacyCost(CondI, VF);
+    LLVM_DEBUG({
+      dbgs() << "Cost of " << CondICost << " for VF " << VF
+             << ": exit condition instruction " << *CondI << "\n";
+    });
+    Cost += CondICost;
     for (Value *Op : CondI->operands()) {
       auto *OpI = dyn_cast<Instruction>(Op);
       if (!OpI || any_of(OpI->users(), [&ExitInstrs, this](User *U) {
@@ -7250,10 +7258,9 @@ InstructionCost LoopVectorizationPlanner::cost(VPlan &Plan,
 /// not have corresponding recipes in \p Plan and are not marked to be ignored
 /// in \p CostCtx. This means the VPlan contains simplification that the legacy
 /// cost-model did not account for.
-static bool
-planContainsAdditionalSimplifications(VPlan &Plan, ElementCount VF,
-                                      VPCostContext &CostCtx, Loop *TheLoop,
-                                      LoopVectorizationCostModel &CM) {
+static bool planContainsAdditionalSimplifications(VPlan &Plan,
+                                                  VPCostContext &CostCtx,
+                                                  Loop *TheLoop) {
   // First collect all instructions for the recipes in Plan.
   auto GetInstructionForCost = [](const VPRecipeBase *R) -> Instruction * {
     if (auto *S = dyn_cast<VPSingleDefRecipe>(R))
@@ -7284,16 +7291,13 @@ planContainsAdditionalSimplifications(VPlan &Plan, ElementCount VF,
   // Return true if the loop contains any instructions that are not also part of
   // the VPlan or are skipped for VPlan-based cost computations. This indicates
   // that the VPlan contains extra simplifications.
-  return any_of(
-      TheLoop->blocks(), [&SeenInstrs, VF, &CostCtx, &CM](BasicBlock *BB) {
-        return any_of(*BB, [&SeenInstrs, VF, &CostCtx, &CM](Instruction &I) {
-          if (isa<PHINode>(&I))
-            return false;
-          return !SeenInstrs.contains(&I) &&
-                 !CostCtx.skipCostComputation(&I, true) &&
-                 !CM.canTruncateToMinimalBitwidth(&I, VF);
-        });
-      });
+  return any_of(TheLoop->blocks(), [&SeenInstrs, &CostCtx](BasicBlock *BB) {
+    return any_of(*BB, [&SeenInstrs, &CostCtx](Instruction &I) {
+      if (isa<PHINode>(&I))
+        return false;
+      return !SeenInstrs.contains(&I) && !CostCtx.skipCostComputation(&I, true);
+    });
+  });
 }
 #endif
 
@@ -7364,8 +7368,7 @@ VectorizationFactor LoopVectorizationPlanner::computeBestVF() {
   precomputeCosts(BestPlan, BestFactor.Width, CostCtx);
   assert((BestFactor.Width == LegacyVF.Width ||
           planContainsAdditionalSimplifications(getPlanFor(BestFactor.Width),
-                                                BestFactor.Width, CostCtx,
-                                                OrigLoop, CM)) &&
+                                                CostCtx, OrigLoop)) &&
          " VPlan cost model and legacy cost model disagreed");
   assert((BestFactor.Width.isScalar() || BestFactor.ScalarCost > 0) &&
          "when vectorizing, the scalar cost must be computed.");
