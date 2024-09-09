@@ -986,10 +986,9 @@ private:
       uint64_t Offset,
       DenseMap<unsigned, GlobalValue::LinkageTypes> &ValueIdToLinkageMap);
   SmallVector<ValueInfo, 0> makeRefList(ArrayRef<uint64_t> Record);
-  std::vector<FunctionSummary::EdgeTy> makeCallList(ArrayRef<uint64_t> Record,
-                                                    bool IsOldProfileFormat,
-                                                    bool HasProfile,
-                                                    bool HasRelBF);
+  SmallVector<FunctionSummary::EdgeTy, 0>
+  makeCallList(ArrayRef<uint64_t> Record, bool IsOldProfileFormat,
+               bool HasProfile, bool HasRelBF);
   Error parseEntireSummary(unsigned ID);
   Error parseModuleStringTable();
   void parseTypeIdCompatibleVtableSummaryRecord(ArrayRef<uint64_t> Record);
@@ -2191,6 +2190,8 @@ static Attribute::AttrKind getAttrFromCode(uint64_t Code) {
     return Attribute::Range;
   case bitc::ATTR_KIND_INITIALIZES:
     return Attribute::Initializes;
+  case bitc::ATTR_KIND_CORO_ELIDE_SAFE:
+    return Attribute::CoroElideSafe;
   }
 }
 
@@ -7378,11 +7379,11 @@ ModuleSummaryIndexBitcodeReader::makeRefList(ArrayRef<uint64_t> Record) {
   return Ret;
 }
 
-std::vector<FunctionSummary::EdgeTy>
+SmallVector<FunctionSummary::EdgeTy, 0>
 ModuleSummaryIndexBitcodeReader::makeCallList(ArrayRef<uint64_t> Record,
                                               bool IsOldProfileFormat,
                                               bool HasProfile, bool HasRelBF) {
-  std::vector<FunctionSummary::EdgeTy> Ret;
+  SmallVector<FunctionSummary::EdgeTy, 0> Ret;
   // In the case of new profile formats, there are two Record entries per
   // Edge. Otherwise, conservatively reserve up to Record.size.
   if (!IsOldProfileFormat && (HasProfile || HasRelBF))
@@ -7670,7 +7671,7 @@ Error ModuleSummaryIndexBitcodeReader::parseEntireSummary(unsigned ID) {
           ArrayRef<uint64_t>(Record).slice(RefListStartIndex, NumRefs));
       bool HasProfile = (BitCode == bitc::FS_PERMODULE_PROFILE);
       bool HasRelBF = (BitCode == bitc::FS_PERMODULE_RELBF);
-      std::vector<FunctionSummary::EdgeTy> Calls = makeCallList(
+      SmallVector<FunctionSummary::EdgeTy, 0> Calls = makeCallList(
           ArrayRef<uint64_t>(Record).slice(CallGraphEdgeStartIndex),
           IsOldProfileFormat, HasProfile, HasRelBF);
       setSpecialRefs(Refs, NumRORefs, NumWORefs);
@@ -7686,8 +7687,8 @@ Error ModuleSummaryIndexBitcodeReader::parseEntireSummary(unsigned ID) {
         PendingAllocs.clear();
       }
       auto FS = std::make_unique<FunctionSummary>(
-          Flags, InstCount, getDecodedFFlags(RawFunFlags), /*EntryCount=*/0,
-          std::move(Refs), std::move(Calls), std::move(PendingTypeTests),
+          Flags, InstCount, getDecodedFFlags(RawFunFlags), std::move(Refs),
+          std::move(Calls), std::move(PendingTypeTests),
           std::move(PendingTypeTestAssumeVCalls),
           std::move(PendingTypeCheckedLoadVCalls),
           std::move(PendingTypeTestAssumeConstVCalls),
@@ -7792,7 +7793,6 @@ Error ModuleSummaryIndexBitcodeReader::parseEntireSummary(unsigned ID) {
       uint64_t RawFlags = Record[2];
       unsigned InstCount = Record[3];
       uint64_t RawFunFlags = 0;
-      uint64_t EntryCount = 0;
       unsigned NumRefs = Record[4];
       unsigned NumRORefs = 0, NumWORefs = 0;
       int RefListStartIndex = 5;
@@ -7806,7 +7806,6 @@ Error ModuleSummaryIndexBitcodeReader::parseEntireSummary(unsigned ID) {
           RefListStartIndex = 7;
           if (Version >= 6) {
             NumRefsIndex = 6;
-            EntryCount = Record[5];
             RefListStartIndex = 8;
             if (Version >= 7) {
               RefListStartIndex = 9;
@@ -7826,14 +7825,14 @@ Error ModuleSummaryIndexBitcodeReader::parseEntireSummary(unsigned ID) {
       SmallVector<ValueInfo, 0> Refs = makeRefList(
           ArrayRef<uint64_t>(Record).slice(RefListStartIndex, NumRefs));
       bool HasProfile = (BitCode == bitc::FS_COMBINED_PROFILE);
-      std::vector<FunctionSummary::EdgeTy> Edges = makeCallList(
+      SmallVector<FunctionSummary::EdgeTy, 0> Edges = makeCallList(
           ArrayRef<uint64_t>(Record).slice(CallGraphEdgeStartIndex),
           IsOldProfileFormat, HasProfile, false);
       ValueInfo VI = std::get<0>(getValueInfoFromValueId(ValueID));
       setSpecialRefs(Refs, NumRORefs, NumWORefs);
       auto FS = std::make_unique<FunctionSummary>(
-          Flags, InstCount, getDecodedFFlags(RawFunFlags), EntryCount,
-          std::move(Refs), std::move(Edges), std::move(PendingTypeTests),
+          Flags, InstCount, getDecodedFFlags(RawFunFlags), std::move(Refs),
+          std::move(Edges), std::move(PendingTypeTests),
           std::move(PendingTypeTestAssumeVCalls),
           std::move(PendingTypeCheckedLoadVCalls),
           std::move(PendingTypeTestAssumeConstVCalls),
