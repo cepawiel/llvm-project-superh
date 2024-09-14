@@ -267,7 +267,10 @@ def err_invalid_width_spec : Error<
 def err_invalid_complex_spec : Error<"'_Complex %0' is invalid">;
 
 def ext_auto_type_specifier : ExtWarn<
-  "'auto' type specifier is a C++11 extension">, InGroup<CXX11>;
+  "'auto' type specifier is a %select{C++11|HLSL 202y}0 extension">,
+  InGroup<CXX11>;
+def ext_hlsl_auto_type_specifier : ExtWarn<
+  ext_auto_type_specifier.Summary>, InGroup<HLSL202y>;
 def warn_auto_storage_class : Warning<
   "'auto' storage class specifier is redundant and incompatible with C++11">,
   InGroup<CXX11Compat>, DefaultIgnore;
@@ -439,6 +442,10 @@ def warn_deprecated_literal_operator_id: Warning<
   "is deprecated">, InGroup<DeprecatedLiteralOperator>, DefaultIgnore;
 def warn_reserved_module_name : Warning<
   "%0 is a reserved name for a module">, InGroup<ReservedModuleIdentifier>;
+def warn_import_implementation_partition_unit_in_interface_unit : Warning<
+  "importing an implementation partition unit in a module interface is not recommended. "
+  "Names from %0 may not be reachable">,
+  InGroup<DiagGroup<"import-implementation-partition-unit-in-interface-unit">>;
 
 def warn_parameter_size: Warning<
   "%0 is a large (%1 bytes) pass-by-value argument; "
@@ -1039,7 +1046,6 @@ def err_opencl_invalid_param : Error<
   "declaring function parameter of type %0 is not allowed%select{; did you forget * ?|}1">;
 def err_opencl_invalid_return : Error<
   "declaring function return value of type %0 is not allowed %select{; did you forget * ?|}1">;
-def warn_enum_value_overflow : Warning<"overflow in enumeration value">;
 def warn_pragma_options_align_reset_failed : Warning<
   "#pragma options align=reset failed: %0">,
   InGroup<IgnoredPragmas>;
@@ -6194,9 +6200,13 @@ def err_misplaced_ivar : Error<
 def warn_ivars_in_interface : Warning<
   "declaration of instance variables in the interface is deprecated">,
   InGroup<DiagGroup<"objc-interface-ivars">>, DefaultIgnore;
-def ext_enum_value_not_int : Extension<
-  "ISO C restricts enumerator values to range of 'int' (%0 is too "
-  "%select{small|large}1)">;
+def ext_c23_enum_value_not_int : Extension<
+  "%select{|incremented }0enumerator value which exceeds the range of 'int' is "
+  "a C23 extension (%1 is too %select{small|large}2)">, InGroup<C23>;
+def warn_c17_compat_enum_value_not_int : Warning<
+  "%select{|incremented }0enumerator value which exceeds the range of 'int' is "
+  "incompatible with C standards before C23 (%1 is too %select{small|large}2)">,
+  DefaultIgnore, InGroup<CPre23Compat>;
 def ext_enum_too_large : ExtWarn<
   "enumeration values exceed range of largest integer">, InGroup<EnumTooLarge>;
 def ext_enumerator_increment_too_large : ExtWarn<
@@ -9206,6 +9216,9 @@ def err_typecheck_expect_scalar_operand : Error<
   "operand of type %0 where arithmetic or pointer type is required">;
 def err_typecheck_cond_incompatible_operands : Error<
   "incompatible operand types%diff{ ($ and $)|}0,1">;
+def err_typecheck_expect_scalar_or_vector : Error<
+  "invalid operand of type %0 where %1 or "
+  "a vector of such type is required">;
 def err_typecheck_expect_flt_or_vector : Error<
   "invalid operand of type %0 where floating, complex or "
   "a vector of such types is required">;
