@@ -4454,7 +4454,9 @@ BoUpSLP::findReusedOrderedScalars(const BoUpSLP::TreeEntry &TE) {
   auto *VecTy = getWidenedType(ScalarTy, NumScalars);
   int NumParts = TTI->getNumberOfParts(VecTy);
   if (NumParts == 0 || NumParts >= NumScalars ||
-      VecTy->getNumElements() % NumParts != 0)
+      VecTy->getNumElements() % NumParts != 0 ||
+      !hasFullVectorsOrPowerOf2(*TTI, VecTy->getElementType(),
+                                VecTy->getNumElements() / NumParts))
     NumParts = 1;
   SmallVector<int> ExtractMask;
   SmallVector<int> Mask;
@@ -5373,8 +5375,11 @@ BoUpSLP::getReorderingData(const TreeEntry &TE, bool TopToBottom) {
             UndefCnt > Sz / 2)
           return std::nullopt;
         UsedVals.set(Val);
-        for (unsigned K = 0; K < NumParts; ++K)
-          ResOrder[Val + Sz * K] = I + K;
+        for (unsigned K = 0; K < NumParts; ++K) {
+          unsigned Idx = Val + Sz * K;
+          if (Idx < VF)
+            ResOrder[Idx] = I + K;
+        }
       }
       return std::move(ResOrder);
     }
@@ -6459,7 +6464,9 @@ static void gatherPossiblyVectorizableLoads(
     auto *VecTy = getWidenedType(ScalarTy, NumScalars);
     NumParts = TTI.getNumberOfParts(VecTy);
     if (NumParts == 0 || NumParts >= NumScalars ||
-        VecTy->getNumElements() % NumParts != 0)
+        VecTy->getNumElements() % NumParts != 0 ||
+        !hasFullVectorsOrPowerOf2(TTI, VecTy->getElementType(),
+                                  VecTy->getNumElements() / NumParts))
       NumParts = 1;
   }
   unsigned VF = PowerOf2Ceil(NumScalars / NumParts);
@@ -7561,7 +7568,7 @@ void BoUpSLP::buildTree_rec(ArrayRef<Value *> VL, unsigned Depth,
   auto TryToFindDuplicates = [&](const InstructionsState &S,
                                  bool DoNotFail = false) {
     // Check that every instruction appears once in this bundle.
-    DenseMap<Value *, unsigned> UniquePositions(VL.size());
+    SmallDenseMap<Value *, unsigned, 16> UniquePositions(VL.size());
     for (Value *V : VL) {
       if (isConstant(V)) {
         ReuseShuffleIndices.emplace_back(
@@ -9958,7 +9965,9 @@ public:
     auto *MaskVecTy = getWidenedType(ScalarTy, Mask.size());
     unsigned NumParts = TTI.getNumberOfParts(MaskVecTy);
     if (NumParts == 0 || NumParts >= Mask.size() ||
-        MaskVecTy->getNumElements() % NumParts != 0)
+        MaskVecTy->getNumElements() % NumParts != 0 ||
+        !hasFullVectorsOrPowerOf2(TTI, MaskVecTy->getElementType(),
+                                  MaskVecTy->getNumElements() / NumParts))
       NumParts = 1;
     unsigned SliceSize = getPartNumElems(Mask.size(), NumParts);
     const auto *It =
@@ -9976,7 +9985,9 @@ public:
     auto *MaskVecTy = getWidenedType(ScalarTy, Mask.size());
     unsigned NumParts = TTI.getNumberOfParts(MaskVecTy);
     if (NumParts == 0 || NumParts >= Mask.size() ||
-        MaskVecTy->getNumElements() % NumParts != 0)
+        MaskVecTy->getNumElements() % NumParts != 0 ||
+        !hasFullVectorsOrPowerOf2(TTI, MaskVecTy->getElementType(),
+                                  MaskVecTy->getNumElements() / NumParts))
       NumParts = 1;
     unsigned SliceSize = getPartNumElems(Mask.size(), NumParts);
     const auto *It =
@@ -10337,13 +10348,16 @@ BoUpSLP::getEntryCost(const TreeEntry *E, ArrayRef<Value *> VectorizedVals,
         InstructionCost VecCost = VectorCost(CommonCost);
         // Check if the current node must be resized, if the parent node is not
         // resized.
-        if (!UnaryInstruction::isCast(E->getOpcode()) && E->Idx != 0 &&
+        if (It != MinBWs.end() && !UnaryInstruction::isCast(E->getOpcode()) &&
+            E->Idx != 0 &&
             (E->getOpcode() != Instruction::Load ||
              !E->UserTreeIndices.empty())) {
-          const EdgeInfo &EI = E->UserTreeIndices.front();
-          if ((EI.UserTE->getOpcode() != Instruction::Select ||
-               EI.EdgeIdx != 0) &&
-              It != MinBWs.end()) {
+          const EdgeInfo &EI =
+              *find_if(E->UserTreeIndices, [](const EdgeInfo &EI) {
+                return !EI.UserTE->isGather() || EI.EdgeIdx != UINT_MAX;
+              });
+          if (EI.UserTE->getOpcode() != Instruction::Select ||
+              EI.EdgeIdx != 0) {
             auto UserBWIt = MinBWs.find(EI.UserTE);
             Type *UserScalarTy =
                 EI.UserTE->getOperand(EI.EdgeIdx).front()->getType();
@@ -10354,8 +10368,7 @@ BoUpSLP::getEntryCost(const TreeEntry *E, ArrayRef<Value *> VectorizedVals,
               unsigned BWSz = DL->getTypeSizeInBits(ScalarTy);
               unsigned SrcBWSz = DL->getTypeSizeInBits(UserScalarTy);
               unsigned VecOpcode;
-              auto *UserVecTy =
-                  getWidenedType(UserScalarTy, E->getVectorFactor());
+              auto *UserVecTy = getWidenedType(UserScalarTy, E->Scalars.size());
               if (BWSz > SrcBWSz)
                 VecOpcode = Instruction::Trunc;
               else
@@ -13628,7 +13641,9 @@ ResTy BoUpSLP::processBuildVector(const TreeEntry *E, Type *ScalarTy,
   auto *VecTy = getWidenedType(ScalarTy, GatheredScalars.size());
   unsigned NumParts = TTI->getNumberOfParts(VecTy);
   if (NumParts == 0 || NumParts >= GatheredScalars.size() ||
-      VecTy->getNumElements() % NumParts != 0)
+      VecTy->getNumElements() % NumParts != 0 ||
+      !hasFullVectorsOrPowerOf2(*TTI, VecTy->getElementType(),
+                                VecTy->getNumElements() / NumParts))
     NumParts = 1;
   if (!all_of(GatheredScalars, IsaPred<UndefValue>)) {
     // Check for gathered extracts.
@@ -18550,7 +18565,8 @@ public:
       for (Value *V : Candidates)
         TrackedVals.try_emplace(V, V);
 
-    auto At = [](MapVector<Value *, unsigned> &MV, Value *V) -> unsigned & {
+    auto At = [](SmallMapVector<Value *, unsigned, 16> &MV,
+                 Value *V) -> unsigned & {
       auto *It = MV.find(V);
       assert(It != MV.end() && "Unable to find given key.");
       return It->second;
@@ -18637,7 +18653,7 @@ public:
                                     RdxKind != RecurKind::FMul &&
                                     RdxKind != RecurKind::FMulAdd;
       // Gather same values.
-      MapVector<Value *, unsigned> SameValuesCounter;
+      SmallMapVector<Value *, unsigned, 16> SameValuesCounter;
       if (IsSupportedHorRdxIdentityOp)
         for (Value *V : Candidates) {
           Value *OrigV = TrackedToOrig.at(V);
@@ -19256,10 +19272,10 @@ private:
 
   /// Emits actual operation for the scalar identity values, found during
   /// horizontal reduction analysis.
-  Value *emitReusedOps(Value *VectorizedValue, IRBuilderBase &Builder,
-                       BoUpSLP &R,
-                       const MapVector<Value *, unsigned> &SameValuesCounter,
-                       const DenseMap<Value *, Value *> &TrackedToOrig) {
+  Value *
+  emitReusedOps(Value *VectorizedValue, IRBuilderBase &Builder, BoUpSLP &R,
+                const SmallMapVector<Value *, unsigned, 16> &SameValuesCounter,
+                const DenseMap<Value *, Value *> &TrackedToOrig) {
     assert(IsSupportedHorRdxIdentityOp &&
            "The optimization of matched scalar identity horizontal reductions "
            "must be supported.");
