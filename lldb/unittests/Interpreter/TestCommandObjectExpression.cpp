@@ -1,13 +1,6 @@
-#include "lldb/Expression/DiagnosticManager.h"
+#include "../../source/Commands/DiagnosticRendering.h"
 #include "lldb/Utility/StreamString.h"
 #include "gtest/gtest.h"
-
-namespace lldb_private {
-std::string RenderDiagnosticDetails(Stream &stream,
-                                    std::optional<uint16_t> offset_in_command,
-                                    bool multiline,
-                                    llvm::ArrayRef<DiagnosticDetail> details);
-}
 
 using namespace lldb_private;
 using namespace lldb;
