@@ -207,8 +207,9 @@ def TeamsOp : OpenMP_Op<"teams", traits = [
 // 2.8.1 Sections Construct
 //===----------------------------------------------------------------------===//
 
-def SectionOp : OpenMP_Op<"section", [HasParent<"SectionsOp">],
-                          singleRegion = true> {
+def SectionOp : OpenMP_Op<"section", traits = [
+    BlockArgOpenMPOpInterface, HasParent<"SectionsOp">
+  ], singleRegion = true> {
   let summary = "section directive";
   let description = [{
     A section operation encloses a region which represents one section in a
@@ -218,6 +219,13 @@ def SectionOp : OpenMP_Op<"section", [HasParent<"SectionsOp">],
     operation. This is done to reflect situations where these block arguments
     represent variables private to each section.
   }];
+  let extraClassDeclaration = [{
+    // Override BlockArgOpenMPOpInterface methods based on the parent
+    // omp.sections operation. Only forward-declare here because SectionsOp is
+    // not completely defined at this point.
+    unsigned numPrivateBlockArgs();
+    unsigned numReductionBlockArgs();
+  }] # clausesExtraClassDeclaration;
   let assemblyFormat = "$region attr-dict";
 }
 
@@ -986,6 +994,12 @@ def TargetDataOp: OpenMP_Op<"target_data", traits = [
   let builders = [
     OpBuilder<(ins CArg<"const TargetDataOperands &">:$clauses)>
   ];
+
+  let assemblyFormat = clausesAssemblyFormat # [{
+    custom<UseDeviceAddrUseDevicePtrRegion>(
+        $region, $use_device_addr_vars, type($use_device_addr_vars),
+        $use_device_ptr_vars, type($use_device_ptr_vars)) attr-dict
+  }];
 
   let hasVerifier = 1;
 }
