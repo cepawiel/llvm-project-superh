@@ -22,8 +22,8 @@
 // the Coroutine library.
 //===----------------------------------------------------------------------===//
 
-#ifndef LLVM_LIB_TRANSFORMS_COROUTINES_COROINSTR_H
-#define LLVM_LIB_TRANSFORMS_COROUTINES_COROINSTR_H
+#ifndef LLVM_TRANSFORMS_COROUTINES_COROINSTR_H
+#define LLVM_TRANSFORMS_COROUTINES_COROINSTR_H
 
 #include "llvm/IR/GlobalVariable.h"
 #include "llvm/IR/IntrinsicInst.h"
@@ -32,7 +32,7 @@
 namespace llvm {
 
 /// This class represents the llvm.coro.subfn.addr instruction.
-class LLVM_LIBRARY_VISIBILITY CoroSubFnInst : public IntrinsicInst {
+class CoroSubFnInst : public IntrinsicInst {
   enum { FrameArg, IndexArg };
 
 public:
@@ -67,7 +67,7 @@ public:
 };
 
 /// This represents the llvm.coro.alloc instruction.
-class LLVM_LIBRARY_VISIBILITY CoroAllocInst : public IntrinsicInst {
+class CoroAllocInst : public IntrinsicInst {
 public:
   // Methods to support type inquiry through isa, cast, and dyn_cast:
   static bool classof(const IntrinsicInst *I) {
@@ -82,7 +82,7 @@ public:
 // FIXME: add callback metadata
 // FIXME: make a proper IntrinisicInst. Currently this is not possible,
 // because llvm.coro.await.suspend.* can be invoked.
-class LLVM_LIBRARY_VISIBILITY CoroAwaitSuspendInst : public CallBase {
+class CoroAwaitSuspendInst : public CallBase {
   enum { AwaiterArg, FrameArg, WrapperArg };
 
 public:
@@ -112,7 +112,7 @@ public:
 };
 
 /// This represents a common base class for llvm.coro.id instructions.
-class LLVM_LIBRARY_VISIBILITY AnyCoroIdInst : public IntrinsicInst {
+class AnyCoroIdInst : public IntrinsicInst {
 public:
   CoroAllocInst *getCoroAlloc() {
     for (User *U : users())
@@ -124,7 +124,8 @@ public:
   IntrinsicInst *getCoroBegin() {
     for (User *U : users())
       if (auto *II = dyn_cast<IntrinsicInst>(U))
-        if (II->getIntrinsicID() == Intrinsic::coro_begin)
+        if (II->getIntrinsicID() == Intrinsic::coro_begin ||
+            II->getIntrinsicID() == Intrinsic::coro_begin_custom_abi)
           return II;
     llvm_unreachable("no coro.begin associated with coro.id");
   }
@@ -143,7 +144,7 @@ public:
 };
 
 /// This represents the llvm.coro.id instruction.
-class LLVM_LIBRARY_VISIBILITY CoroIdInst : public AnyCoroIdInst {
+class CoroIdInst : public AnyCoroIdInst {
   enum { AlignArg, PromiseArg, CoroutineArg, InfoArg };
 
 public:
@@ -232,7 +233,7 @@ public:
 
 /// This represents either the llvm.coro.id.retcon or
 /// llvm.coro.id.retcon.once instruction.
-class LLVM_LIBRARY_VISIBILITY AnyCoroIdRetconInst : public AnyCoroIdInst {
+class AnyCoroIdRetconInst : public AnyCoroIdInst {
   enum { SizeArg, AlignArg, StorageArg, PrototypeArg, AllocArg, DeallocArg };
 
 public:
@@ -246,9 +247,7 @@ public:
     return cast<ConstantInt>(getArgOperand(AlignArg))->getAlignValue();
   }
 
-  Value *getStorage() const {
-    return getArgOperand(StorageArg);
-  }
+  Value *getStorage() const { return getArgOperand(StorageArg); }
 
   /// Return the prototype for the continuation function.  The type,
   /// attributes, and calling convention of the continuation function(s)
@@ -270,8 +269,8 @@ public:
   // Methods to support type inquiry through isa, cast, and dyn_cast:
   static bool classof(const IntrinsicInst *I) {
     auto ID = I->getIntrinsicID();
-    return ID == Intrinsic::coro_id_retcon
-        || ID == Intrinsic::coro_id_retcon_once;
+    return ID == Intrinsic::coro_id_retcon ||
+           ID == Intrinsic::coro_id_retcon_once;
   }
   static bool classof(const Value *V) {
     return isa<IntrinsicInst>(V) && classof(cast<IntrinsicInst>(V));
@@ -279,8 +278,7 @@ public:
 };
 
 /// This represents the llvm.coro.id.retcon instruction.
-class LLVM_LIBRARY_VISIBILITY CoroIdRetconInst
-    : public AnyCoroIdRetconInst {
+class CoroIdRetconInst : public AnyCoroIdRetconInst {
 public:
   // Methods to support type inquiry through isa, cast, and dyn_cast:
   static bool classof(const IntrinsicInst *I) {
@@ -292,8 +290,7 @@ public:
 };
 
 /// This represents the llvm.coro.id.retcon.once instruction.
-class LLVM_LIBRARY_VISIBILITY CoroIdRetconOnceInst
-    : public AnyCoroIdRetconInst {
+class CoroIdRetconOnceInst : public AnyCoroIdRetconInst {
 public:
   // Methods to support type inquiry through isa, cast, and dyn_cast:
   static bool classof(const IntrinsicInst *I) {
@@ -305,7 +302,7 @@ public:
 };
 
 /// This represents the llvm.coro.id.async instruction.
-class LLVM_LIBRARY_VISIBILITY CoroIdAsyncInst : public AnyCoroIdInst {
+class CoroIdAsyncInst : public AnyCoroIdInst {
   enum { SizeArg, AlignArg, StorageArg, AsyncFuncPtrArg };
 
 public:
@@ -356,7 +353,7 @@ public:
 };
 
 /// This represents the llvm.coro.context.alloc instruction.
-class LLVM_LIBRARY_VISIBILITY CoroAsyncContextAllocInst : public IntrinsicInst {
+class CoroAsyncContextAllocInst : public IntrinsicInst {
   enum { AsyncFuncPtrArg };
 
 public:
@@ -375,8 +372,7 @@ public:
 };
 
 /// This represents the llvm.coro.context.dealloc instruction.
-class LLVM_LIBRARY_VISIBILITY CoroAsyncContextDeallocInst
-    : public IntrinsicInst {
+class CoroAsyncContextDeallocInst : public IntrinsicInst {
   enum { AsyncContextArg };
 
 public:
@@ -396,7 +392,7 @@ public:
 /// This represents the llvm.coro.async.resume instruction.
 /// During lowering this is replaced by the resume function of a suspend point
 /// (the continuation function).
-class LLVM_LIBRARY_VISIBILITY CoroAsyncResumeInst : public IntrinsicInst {
+class CoroAsyncResumeInst : public IntrinsicInst {
 public:
   // Methods to support type inquiry through isa, cast, and dyn_cast:
   static bool classof(const IntrinsicInst *I) {
@@ -408,7 +404,7 @@ public:
 };
 
 /// This represents the llvm.coro.async.size.replace instruction.
-class LLVM_LIBRARY_VISIBILITY CoroAsyncSizeReplace : public IntrinsicInst {
+class CoroAsyncSizeReplace : public IntrinsicInst {
 public:
   // Methods to support type inquiry through isa, cast, and dyn_cast:
   static bool classof(const IntrinsicInst *I) {
@@ -420,7 +416,7 @@ public:
 };
 
 /// This represents the llvm.coro.frame instruction.
-class LLVM_LIBRARY_VISIBILITY CoroFrameInst : public IntrinsicInst {
+class CoroFrameInst : public IntrinsicInst {
 public:
   // Methods to support type inquiry through isa, cast, and dyn_cast:
   static bool classof(const IntrinsicInst *I) {
@@ -432,7 +428,7 @@ public:
 };
 
 /// This represents the llvm.coro.free instruction.
-class LLVM_LIBRARY_VISIBILITY CoroFreeInst : public IntrinsicInst {
+class CoroFreeInst : public IntrinsicInst {
   enum { IdArg, FrameArg };
 
 public:
@@ -447,20 +443,30 @@ public:
   }
 };
 
-/// This class represents the llvm.coro.begin instruction.
-class LLVM_LIBRARY_VISIBILITY CoroBeginInst : public IntrinsicInst {
-  enum { IdArg, MemArg };
+/// This class represents the llvm.coro.begin or llvm.coro.begin.custom.abi
+/// instructions.
+class CoroBeginInst : public IntrinsicInst {
+  enum { IdArg, MemArg, CustomABIArg };
 
 public:
   AnyCoroIdInst *getId() const {
     return cast<AnyCoroIdInst>(getArgOperand(IdArg));
   }
 
+  bool hasCustomABI() const {
+    return getIntrinsicID() == Intrinsic::coro_begin_custom_abi;
+  }
+
+  int getCustomABI() const {
+    return cast<ConstantInt>(getArgOperand(CustomABIArg))->getZExtValue();
+  }
+
   Value *getMem() const { return getArgOperand(MemArg); }
 
   // Methods for support type inquiry through isa, cast, and dyn_cast:
   static bool classof(const IntrinsicInst *I) {
-    return I->getIntrinsicID() == Intrinsic::coro_begin;
+    return I->getIntrinsicID() == Intrinsic::coro_begin ||
+           I->getIntrinsicID() == Intrinsic::coro_begin_custom_abi;
   }
   static bool classof(const Value *V) {
     return isa<IntrinsicInst>(V) && classof(cast<IntrinsicInst>(V));
@@ -468,7 +474,7 @@ public:
 };
 
 /// This represents the llvm.coro.save instruction.
-class LLVM_LIBRARY_VISIBILITY CoroSaveInst : public IntrinsicInst {
+class CoroSaveInst : public IntrinsicInst {
 public:
   // Methods to support type inquiry through isa, cast, and dyn_cast:
   static bool classof(const IntrinsicInst *I) {
@@ -480,7 +486,7 @@ public:
 };
 
 /// This represents the llvm.coro.promise instruction.
-class LLVM_LIBRARY_VISIBILITY CoroPromiseInst : public IntrinsicInst {
+class CoroPromiseInst : public IntrinsicInst {
   enum { FrameArg, AlignArg, FromArg };
 
 public:
@@ -505,7 +511,7 @@ public:
   }
 };
 
-class LLVM_LIBRARY_VISIBILITY AnyCoroSuspendInst : public IntrinsicInst {
+class AnyCoroSuspendInst : public IntrinsicInst {
 public:
   CoroSaveInst *getCoroSave() const;
 
@@ -521,7 +527,7 @@ public:
 };
 
 /// This represents the llvm.coro.suspend instruction.
-class LLVM_LIBRARY_VISIBILITY CoroSuspendInst : public AnyCoroSuspendInst {
+class CoroSuspendInst : public AnyCoroSuspendInst {
   enum { SaveArg, FinalArg };
 
 public:
@@ -553,7 +559,7 @@ inline CoroSaveInst *AnyCoroSuspendInst::getCoroSave() const {
 }
 
 /// This represents the llvm.coro.suspend.async instruction.
-class LLVM_LIBRARY_VISIBILITY CoroSuspendAsyncInst : public AnyCoroSuspendInst {
+class CoroSuspendAsyncInst : public AnyCoroSuspendInst {
 public:
   enum {
     StorageArgNoArg,
@@ -594,7 +600,7 @@ public:
 };
 
 /// This represents the llvm.coro.suspend.retcon instruction.
-class LLVM_LIBRARY_VISIBILITY CoroSuspendRetconInst : public AnyCoroSuspendInst {
+class CoroSuspendRetconInst : public AnyCoroSuspendInst {
 public:
   op_iterator value_begin() { return arg_begin(); }
   const_op_iterator value_begin() const { return arg_begin(); }
@@ -619,7 +625,7 @@ public:
 };
 
 /// This represents the llvm.coro.size instruction.
-class LLVM_LIBRARY_VISIBILITY CoroSizeInst : public IntrinsicInst {
+class CoroSizeInst : public IntrinsicInst {
 public:
   // Methods to support type inquiry through isa, cast, and dyn_cast:
   static bool classof(const IntrinsicInst *I) {
@@ -631,7 +637,7 @@ public:
 };
 
 /// This represents the llvm.coro.align instruction.
-class LLVM_LIBRARY_VISIBILITY CoroAlignInst : public IntrinsicInst {
+class CoroAlignInst : public IntrinsicInst {
 public:
   // Methods to support type inquiry through isa, cast, and dyn_cast:
   static bool classof(const IntrinsicInst *I) {
@@ -643,7 +649,7 @@ public:
 };
 
 /// This represents the llvm.end.results instruction.
-class LLVM_LIBRARY_VISIBILITY CoroEndResults : public IntrinsicInst {
+class CoroEndResults : public IntrinsicInst {
 public:
   op_iterator retval_begin() { return arg_begin(); }
   const_op_iterator retval_begin() const { return arg_begin(); }
@@ -671,7 +677,7 @@ public:
   }
 };
 
-class LLVM_LIBRARY_VISIBILITY AnyCoroEndInst : public IntrinsicInst {
+class AnyCoroEndInst : public IntrinsicInst {
   enum { FrameArg, UnwindArg, TokenArg };
 
 public:
@@ -700,7 +706,7 @@ public:
 };
 
 /// This represents the llvm.coro.end instruction.
-class LLVM_LIBRARY_VISIBILITY CoroEndInst : public AnyCoroEndInst {
+class CoroEndInst : public AnyCoroEndInst {
 public:
   // Methods to support type inquiry through isa, cast, and dyn_cast:
   static bool classof(const IntrinsicInst *I) {
@@ -712,7 +718,7 @@ public:
 };
 
 /// This represents the llvm.coro.end instruction.
-class LLVM_LIBRARY_VISIBILITY CoroAsyncEndInst : public AnyCoroEndInst {
+class CoroAsyncEndInst : public AnyCoroEndInst {
   enum { FrameArg, UnwindArg, MustTailCallFuncArg };
 
 public:
@@ -736,12 +742,11 @@ public:
 };
 
 /// This represents the llvm.coro.alloca.alloc instruction.
-class LLVM_LIBRARY_VISIBILITY CoroAllocaAllocInst : public IntrinsicInst {
+class CoroAllocaAllocInst : public IntrinsicInst {
   enum { SizeArg, AlignArg };
+
 public:
-  Value *getSize() const {
-    return getArgOperand(SizeArg);
-  }
+  Value *getSize() const { return getArgOperand(SizeArg); }
   Align getAlignment() const {
     return cast<ConstantInt>(getArgOperand(AlignArg))->getAlignValue();
   }
@@ -756,8 +761,9 @@ public:
 };
 
 /// This represents the llvm.coro.alloca.get instruction.
-class LLVM_LIBRARY_VISIBILITY CoroAllocaGetInst : public IntrinsicInst {
+class CoroAllocaGetInst : public IntrinsicInst {
   enum { AllocArg };
+
 public:
   CoroAllocaAllocInst *getAlloc() const {
     return cast<CoroAllocaAllocInst>(getArgOperand(AllocArg));
@@ -773,8 +779,9 @@ public:
 };
 
 /// This represents the llvm.coro.alloca.free instruction.
-class LLVM_LIBRARY_VISIBILITY CoroAllocaFreeInst : public IntrinsicInst {
+class CoroAllocaFreeInst : public IntrinsicInst {
   enum { AllocArg };
+
 public:
   CoroAllocaAllocInst *getAlloc() const {
     return cast<CoroAllocaAllocInst>(getArgOperand(AllocArg));
@@ -791,4 +798,4 @@ public:
 
 } // End namespace llvm.
 
-#endif
+#endif // LLVM_TRANSFORMS_COROUTINES_COROINSTR_H

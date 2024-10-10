@@ -12,12 +12,13 @@
 // ABI enum and ABI class are used by the Coroutine passes when lowering.
 //===----------------------------------------------------------------------===//
 
-#ifndef LIB_TRANSFORMS_COROUTINES_ABI_H
-#define LIB_TRANSFORMS_COROUTINES_ABI_H
+#ifndef LLVM_TRANSFORMS_COROUTINES_ABI_H
+#define LLVM_TRANSFORMS_COROUTINES_ABI_H
 
-#include "CoroShape.h"
-#include "SuspendCrossingInfo.h"
 #include "llvm/Analysis/TargetTransformInfo.h"
+#include "llvm/Transforms/Coroutines/CoroShape.h"
+#include "llvm/Transforms/Coroutines/MaterializationUtils.h"
+#include "llvm/Transforms/Coroutines/SuspendCrossingInfo.h"
 
 namespace llvm {
 
@@ -28,9 +29,15 @@ namespace coro {
 // This interface/API is to provide an object oriented way to implement ABI
 // functionality. This is intended to replace use of the ABI enum to perform
 // ABI operations. The ABIs (e.g. Switch, Async, Retcon{Once}) are the common
-// ABIs.
+// ABIs. However, specific users may need to modify the behavior of these. This
+// can be accomplished by inheriting one of the common ABIs and overriding one
+// or more of the methods to create a custom ABI. To use a custom ABI for a
+// given coroutine the coro.begin.custom.abi intrinsic is used in place of the
+// coro.begin intrinsic. This takes an additional i32 arg that specifies the
+// index of an ABI generator for the custom ABI object in a SmallVector passed
+// to CoroSplitPass ctor.
 
-class LLVM_LIBRARY_VISIBILITY BaseABI {
+class BaseABI {
 public:
   BaseABI(Function &F, coro::Shape &S,
           std::function<bool(Instruction &)> IsMaterializable)
@@ -56,7 +63,7 @@ public:
   std::function<bool(Instruction &I)> IsMaterializable;
 };
 
-class LLVM_LIBRARY_VISIBILITY SwitchABI : public BaseABI {
+class SwitchABI : public BaseABI {
 public:
   SwitchABI(Function &F, coro::Shape &S,
             std::function<bool(Instruction &)> IsMaterializable)
@@ -69,7 +76,7 @@ public:
                       TargetTransformInfo &TTI) override;
 };
 
-class LLVM_LIBRARY_VISIBILITY AsyncABI : public BaseABI {
+class AsyncABI : public BaseABI {
 public:
   AsyncABI(Function &F, coro::Shape &S,
            std::function<bool(Instruction &)> IsMaterializable)
@@ -82,7 +89,7 @@ public:
                       TargetTransformInfo &TTI) override;
 };
 
-class LLVM_LIBRARY_VISIBILITY AnyRetconABI : public BaseABI {
+class AnyRetconABI : public BaseABI {
 public:
   AnyRetconABI(Function &F, coro::Shape &S,
                std::function<bool(Instruction &)> IsMaterializable)
