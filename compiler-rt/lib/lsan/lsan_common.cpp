@@ -405,7 +405,7 @@ static void ProcessThreads(SuspendedThreadsList const &suspended_threads,
   InternalMmapVector<uptr> registers;
   InternalMmapVector<Range> extra_ranges;
   for (uptr i = 0; i < suspended_threads.ThreadCount(); i++) {
-    tid_t os_id = static_cast<tid_t>(suspended_threads.GetThreadID(i));
+    const tid_t os_id = static_cast<tid_t>(suspended_threads.GetThreadID(i));
     LOG_THREADS("Processing thread %llu.\n", os_id);
     uptr stack_begin, stack_end, tls_begin, tls_end, cache_begin, cache_end;
     DTLS *dtls;
@@ -429,9 +429,8 @@ static void ProcessThreads(SuspendedThreadsList const &suspended_threads,
         continue;
       sp = stack_begin;
     }
-    if (suspended_threads.GetThreadID(i) == caller_tid) {
+    if (os_id == caller_tid)
       sp = caller_sp;
-    }
 
     if (flags()->use_registers && have_registers) {
       uptr registers_begin = reinterpret_cast<uptr>(registers.data());
@@ -712,11 +711,11 @@ static bool ReportUnsuspendedThreads(
 
   Sort(threads.data(), threads.size());
 
-  InternalMmapVector<tid_t> unsuspended;
-  GetRunningThreadsLocked(&unsuspended);
+  InternalMmapVector<tid_t> known_threads;
+  GetRunningThreadsLocked(&known_threads);
 
   bool succeded = true;
-  for (auto os_id : unsuspended) {
+  for (auto os_id : known_threads) {
     uptr i = InternalLowerBound(threads, os_id);
     if (i >= threads.size() || threads[i] != os_id) {
       succeded = false;
