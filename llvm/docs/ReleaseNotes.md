@@ -110,6 +110,9 @@ Changes to the AArch64 Backend
   the required alignment space with a sequence of `0x0` bytes (the requested
   fill value) rather than NOPs.
 
+* Assembler/disassembler support has been added for Armv9.6-A (2024)
+  architecture extensions.
+
 Changes to the AMDGPU Backend
 -----------------------------
 
@@ -171,9 +174,20 @@ Changes to the RISC-V Backend
 * Added `Smctr` and `Ssctr` extensions.
 * `-mcpu=syntacore-scr7` was added.
 * The `Zacas` extension is no longer marked as experimental.
+* The `Smmpm`, `Smnpm`, `Ssnpm`, `Supm`, and `Sspm` pointer masking extensions
+  are no longer marked as experimental.
 
 Changes to the WebAssembly Backend
 ----------------------------------
+
+The default target CPU, "generic", now enables the `-mnontrapping-fptoint`
+and `-mbulk-memory` flags, which correspond to the [Bulk Memory Operations]
+and [Non-trapping float-to-int Conversions] language features, which are
+[widely implemented in engines].
+
+[Bulk Memory Operations]: https://github.com/WebAssembly/bulk-memory-operations/blob/master/proposals/bulk-memory-operations/Overview.md
+[Non-trapping float-to-int Conversions]: https://github.com/WebAssembly/spec/blob/master/proposals/nontrapping-float-to-int-conversion/Overview.md
+[widely implemented in engines]: https://webassembly.org/features/
 
 Changes to the Windows Target
 -----------------------------
