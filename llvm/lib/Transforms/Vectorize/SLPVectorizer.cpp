@@ -975,6 +975,9 @@ static InstructionsState getSameOpcode(ArrayRef<Value *> VL,
       Type *Ty1 = Inst->getOperand(0)->getType();
       if (Ty0 == Ty1) {
         assert(InstOpcode == Opcode && "Expected same CmpInst opcode.");
+        assert(InstOpcode == AltOpcode &&
+               "Alternate instructions are only supported by BinaryOperator "
+               "and CastInst.");
         // Check for compatible operands. If the corresponding operands are not
         // compatible - need to perform alternate vectorization.
         CmpInst::Predicate CurrentPred = Inst->getPredicate();
@@ -1003,7 +1006,10 @@ static InstructionsState getSameOpcode(ArrayRef<Value *> VL,
             AltPred == CurrentPred || AltPred == SwappedCurrentPred)
           continue;
       }
-    } else if (InstOpcode == Opcode || InstOpcode == AltOpcode) {
+    } else if (InstOpcode == Opcode) {
+      assert(InstOpcode == AltOpcode &&
+             "Alternate instructions are only supported by BinaryOperator and "
+             "CastInst.");
       if (auto *Gep = dyn_cast<GetElementPtrInst>(I)) {
         if (Gep->getNumOperands() != 2 ||
             Gep->getOperand(0)->getType() != IBase->getOperand(0)->getType())
@@ -5999,8 +6005,10 @@ void BoUpSLP::reorderTopToBottom() {
       if ((TE->State == TreeEntry::Vectorize ||
            TE->State == TreeEntry::StridedVectorize) &&
           isa<ExtractElementInst, ExtractValueInst, LoadInst, StoreInst,
-              InsertElementInst>(TE->getMainOp()) &&
-          !TE->isAltShuffle()) {
+              InsertElementInst>(TE->getMainOp())) {
+        assert(!TE->isAltShuffle() &&
+               "Alternate instructions are only supported by BinaryOperator "
+               "and CastInst.");
         // Build correct orders for extract{element,value}, loads and
         // stores.
         reorderOrder(TE->ReorderIndices, Mask);
@@ -10130,6 +10138,9 @@ class BoUpSLP::ShuffleCostEstimator : public BaseShuffleAnalysis {
                             InVectors.size() == 1 ? nullptr : InVectors.back(),
                             CommonMask);
       transformMaskAfterShuffle(CommonMask, CommonMask);
+    } else if (InVectors.size() == 2) {
+      Cost += createShuffle(InVectors.front(), InVectors.back(), CommonMask);
+      transformMaskAfterShuffle(CommonMask, CommonMask);
     }
     SameNodesEstimated = false;
     if (!E2 && InVectors.size() == 1) {
@@ -10147,8 +10158,21 @@ class BoUpSLP::ShuffleCostEstimator : public BaseShuffleAnalysis {
       Cost += createShuffle(InVectors.front(), &E1, CommonMask);
       transformMaskAfterShuffle(CommonMask, CommonMask);
     } else {
+      auto P = InVectors.front();
       Cost += createShuffle(&E1, E2, Mask);
-      transformMaskAfterShuffle(CommonMask, Mask);
+      unsigned VF = Mask.size();
+      if (Value *V1 = P.dyn_cast<Value *>()) {
+        VF = std::max(VF,
+                      getNumElements(V1->getType()));
+      } else {
+        const auto *E = P.get<const TreeEntry *>();
+        VF = std::max(VF, E->getVectorFactor());
+      }
+      for (unsigned Idx = 0, Sz = CommonMask.size(); Idx < Sz; ++Idx)
+        if (Mask[Idx] != PoisonMaskElem)
+          CommonMask[Idx] = Idx + (InVectors.empty() ? 0 : VF);
+      Cost += createShuffle(P, InVectors.front(), CommonMask);
+      transformMaskAfterShuffle(CommonMask, CommonMask);
     }
   }
 
@@ -14007,9 +14031,10 @@ public:
       transformMaskAfterShuffle(CommonMask, CommonMask);
     }
     V1 = createShuffle(V1, V2, Mask);
+    unsigned VF = std::max(getVF(V1), getVF(Vec));
     for (unsigned Idx = 0, Sz = CommonMask.size(); Idx < Sz; ++Idx)
       if (Mask[Idx] != PoisonMaskElem)
-        CommonMask[Idx] = Idx + Sz;
+        CommonMask[Idx] = Idx + VF;
     InVectors.front() = Vec;
     if (InVectors.size() == 2)
       InVectors.back() = V1;
@@ -15643,7 +15668,7 @@ Value *BoUpSLP::vectorizeTree(TreeEntry *E, bool PostponedPHIs) {
       SmallVector<Value *> OpVecs;
       SmallVector<Type *, 2> TysForDecl;
       // Add return type if intrinsic is overloaded on it.
-      if (UseIntrinsic && isVectorIntrinsicWithOverloadTypeAtArg(ID, -1))
+      if (UseIntrinsic && isVectorIntrinsicWithOverloadTypeAtArg(ID, -1, TTI))
         TysForDecl.push_back(VecTy);
       auto *CEI = cast<CallInst>(VL0);
       for (unsigned I : seq<unsigned>(0, CI->arg_size())) {
@@ -15658,7 +15683,7 @@ Value *BoUpSLP::vectorizeTree(TreeEntry *E, bool PostponedPHIs) {
               It->second.first < DL->getTypeSizeInBits(CEI->getType()))
             ScalarArg = Builder.getFalse();
           OpVecs.push_back(ScalarArg);
-          if (isVectorIntrinsicWithOverloadTypeAtArg(ID, I))
+          if (isVectorIntrinsicWithOverloadTypeAtArg(ID, I, TTI))
             TysForDecl.push_back(ScalarArg->getType());
           continue;
         }
@@ -15680,7 +15705,7 @@ Value *BoUpSLP::vectorizeTree(TreeEntry *E, bool PostponedPHIs) {
         }
         LLVM_DEBUG(dbgs() << "SLP: OpVec[" << I << "]: " << *OpVec << "\n");
         OpVecs.push_back(OpVec);
-        if (UseIntrinsic && isVectorIntrinsicWithOverloadTypeAtArg(ID, I))
+        if (UseIntrinsic && isVectorIntrinsicWithOverloadTypeAtArg(ID, I, TTI))
           TysForDecl.push_back(OpVec->getType());
       }
 
