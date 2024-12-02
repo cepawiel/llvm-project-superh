@@ -256,6 +256,8 @@ C++2c Feature Support
 - Added the ``__builtin_is_within_lifetime`` builtin, which supports
   `P2641R4 Checking if a union alternative is active <https://wg21.link/p2641r4>`_
 
+- Implemented `P3176R1 The Oxford variadic comma <https://wg21.link/P3176R1>`_
+
 C++23 Feature Support
 ^^^^^^^^^^^^^^^^^^^^^
 - Removed the restriction to literal types in constexpr functions in C++23 mode.
@@ -762,6 +764,7 @@ Bug Fixes to C++ Support
   missing placeholder return type. (#GH78694)
 - Fixed a bug where bounds of partially expanded pack indexing expressions were checked too early. (#GH116105)
 - Fixed an assertion failure caused by using ``consteval`` in condition in consumed analyses. (#GH117385)
+- Fix a crash caused by incorrect argument position in merging deduced template arguments. (#GH113659)
 
 Bug Fixes to AST Handling
 ^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -964,6 +967,8 @@ AST Matchers
 - Ensure ``hasName`` matches template specializations across inline namespaces,
   making `matchesNodeFullSlow` and `matchesNodeFullFast` consistent.
 
+- Add ``exportDecl`` matcher to match export declaration.
+
 clang-format
 ------------
 
@@ -1014,6 +1019,10 @@ Improvements
 
 Moved checkers
 ^^^^^^^^^^^^^^
+
+- The checker ``alpha.core.IdenticalExpr`` was deleted because it was
+  duplicated in the clang-tidy checkers ``misc-redundant-expression`` and
+  ``bugprone-branch-clone``.
 
 - The checker ``alpha.security.MallocOverflow`` was deleted because it was
   badly implemented and its agressive logic produced too many false positives.
