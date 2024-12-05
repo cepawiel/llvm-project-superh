@@ -1,7 +1,7 @@
-.. include:: check.rst
+.. include:: ../check.rst
 
 ========
-setjmp.h
+locale.h
 ========
 
 Macros
@@ -16,9 +16,29 @@ Macros
     - Implemented
     - C23 Standard Section
     - POSIX.1-2024 Standard Section
-  * - __STDC_VERSION_SETJMP_H__
+  * - LC_ALL
+    - |check|
+    - 7.11
     -
-    - 7.13.2
+  * - LC_COLLATE
+    - |check|
+    - 7.11
+    -
+  * - LC_CTYPE
+    - |check|
+    - 7.11
+    -
+  * - LC_MONETARY
+    - |check|
+    - 7.11
+    -
+  * - LC_NUMERIC
+    - |check|
+    - 7.11
+    -
+  * - LC_TIME
+    - |check|
+    - 7.11
     -
 
 Functions
@@ -33,11 +53,11 @@ Functions
     - Implemented
     - C23 Standard Section
     - POSIX.1-2024 Standard Section
-  * - longjmp
+  * - localeconv
     - |check|
-    - 7.13.2.1
+    - 7.11.2.1
     -
-  * - setjmp
+  * - setlocale
     - |check|
-    - 7.13.1.1
+    - 7.11.1.1
     -
