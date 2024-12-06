@@ -66,8 +66,9 @@ void SymbolTable::addFile(InputFile *file) {
       ctx.objFileInstances.push_back(f);
     } else if (auto *f = dyn_cast<BitcodeFile>(file)) {
       if (ltoCompilationDone) {
-        error("LTO object file " + toString(file) + " linked in after "
-              "doing LTO compilation.");
+        Err(ctx) << "LTO object file " << toString(file)
+                 << " linked in after "
+                    "doing LTO compilation.";
       }
       ctx.bitcodeFileInstances.push_back(f);
     } else if (auto *f = dyn_cast<ImportFile>(file)) {
@@ -81,13 +82,14 @@ void SymbolTable::addFile(InputFile *file) {
       (ctx.config.machine == IMAGE_FILE_MACHINE_UNKNOWN ||
        (ctx.config.machineInferred &&
         (ctx.config.machine == ARM64 || ctx.config.machine == AMD64)))) {
-    error(toString(file) + ": machine type arm64ec is ambiguous and cannot be "
-                           "inferred, use /machine:arm64ec or /machine:arm64x");
+    Err(ctx) << toString(file)
+             << ": machine type arm64ec is ambiguous and cannot be "
+                "inferred, use /machine:arm64ec or /machine:arm64x";
     return;
   }
   if (!compatibleMachineType(ctx, mt)) {
-    error(toString(file) + ": machine type " + machineToStr(mt) +
-          " conflicts with " + machineToStr(ctx.config.machine));
+    Err(ctx) << toString(file) << ": machine type " << machineToStr(mt)
+             << " conflicts with " << machineToStr(ctx.config.machine);
     return;
   }
   if (ctx.config.machine == IMAGE_FILE_MACHINE_UNKNOWN &&
@@ -100,11 +102,8 @@ void SymbolTable::addFile(InputFile *file) {
   ctx.driver.parseDirectives(file);
 }
 
-static void errorOrWarn(const Twine &s, bool forceUnresolved) {
-  if (forceUnresolved)
-    warn(s);
-  else
-    error(s);
+static COFFSyncStream errorOrWarn(COFFLinkerContext &ctx) {
+  return {ctx, ctx.config.forceUnresolved ? DiagLevel::Warn : DiagLevel::Err};
 }
 
 // Causes the file associated with a lazy symbol to be linked in.
@@ -271,7 +270,7 @@ struct UndefinedDiag {
   std::vector<File> files;
 };
 
-static void reportUndefinedSymbol(const COFFLinkerContext &ctx,
+static void reportUndefinedSymbol(COFFLinkerContext &ctx,
                                   const UndefinedDiag &undefDiag) {
   std::string out;
   llvm::raw_string_ostream os(out);
@@ -291,7 +290,7 @@ static void reportUndefinedSymbol(const COFFLinkerContext &ctx,
   }
   if (numDisplayedRefs < numRefs)
     os << "\n>>> referenced " << numRefs - numDisplayedRefs << " more times";
-  errorOrWarn(out, ctx.config.forceUnresolved);
+  errorOrWarn(ctx) << out;
 }
 
 void SymbolTable::loadMinGWSymbols() {
@@ -423,8 +422,7 @@ static void reportProblemSymbols(
 
   for (Symbol *b : ctx.config.gcroot) {
     if (undefs.count(b))
-      errorOrWarn("<root>: undefined symbol: " + toString(ctx, *b),
-                  ctx.config.forceUnresolved);
+      errorOrWarn(ctx) << "<root>: undefined symbol: " << toString(ctx, *b);
     if (localImports)
       if (Symbol *imp = localImports->lookup(b))
         Warn(ctx) << "<root>: locally defined symbol imported: "
@@ -624,7 +622,7 @@ void SymbolTable::initializeECThunks() {
     // feasible, functions are required to be COMDAT symbols with no offset.
     if (!from || !from->getChunk()->isCOMDAT() ||
         cast<DefinedRegular>(from)->getValue()) {
-      error("non COMDAT symbol '" + from->getName() + "' in hybrid map");
+      Err(ctx) << "non COMDAT symbol '" << from->getName() << "' in hybrid map";
       continue;
     }
     from->getChunk()->setEntryThunk(to);
@@ -819,7 +817,7 @@ void SymbolTable::reportDuplicate(Symbol *existing, InputFile *newFile,
   if (ctx.config.forceMultiple)
     Warn(ctx) << msg;
   else
-    error(msg);
+    Err(ctx) << msg;
 }
 
 Symbol *SymbolTable::addAbsolute(StringRef n, COFFSymbolRef sym) {
