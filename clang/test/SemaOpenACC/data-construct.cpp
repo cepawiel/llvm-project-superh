@@ -36,7 +36,6 @@ void AtLeastOneOf() {
   ;
 #pragma acc data deviceptr(VarPtr)
   ;
-  // expected-warning@+1{{OpenACC clause 'attach' not yet implemented}}
 #pragma acc data attach(VarPtr)
   ;
 #pragma acc data default(none)
@@ -62,8 +61,7 @@ void AtLeastOneOf() {
   // Enter Data
 #pragma acc enter data copyin(Var)
 #pragma acc enter data create(Var)
-  // expected-warning@+1{{OpenACC clause 'attach' not yet implemented}}
-#pragma acc enter data attach(Var)
+#pragma acc enter data attach(VarPtr)
 
   // OpenACC TODO: The following 'enter data' directives should diagnose, since
   // they don't have at least one of the above clauses.
@@ -77,8 +75,7 @@ void AtLeastOneOf() {
 #pragma acc exit data copyout(Var)
   // expected-warning@+1{{OpenACC clause 'delete' not yet implemented}}
 #pragma acc exit data delete(Var)
-  // expected-warning@+1{{OpenACC clause 'detach' not yet implemented}}
-#pragma acc exit data detach(Var)
+#pragma acc exit data detach(VarPtr)
 
   // OpenACC TODO: The following 'exit data' directives should diagnose, since
   // they don't have at least one of the above clauses.
@@ -86,7 +83,6 @@ void AtLeastOneOf() {
 #pragma acc exit data if(Var)
 #pragma acc exit data async
 #pragma acc exit data wait
-  // expected-warning@+1{{OpenACC clause 'finalize' not yet implemented}}
 #pragma acc exit data finalize
 #pragma acc exit data
 
@@ -99,7 +95,6 @@ void AtLeastOneOf() {
 
 #pragma acc host_data if(Var)
   ;
-  // expected-warning@+1{{OpenACC clause 'if_present' not yet implemented}}
 #pragma acc host_data if_present
   ;
 #pragma acc host_data
