@@ -10,8 +10,11 @@
 #include "DXILConstants.h"
 #include "DXILIntrinsicExpansion.h"
 #include "DXILOpBuilder.h"
+#include "DXILResourceAnalysis.h"
+#include "DXILShaderFlags.h"
 #include "DirectX.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/Analysis/DXILMetadataAnalysis.h"
 #include "llvm/Analysis/DXILResource.h"
 #include "llvm/CodeGen/Passes.h"
 #include "llvm/IR/DiagnosticInfo.h"
@@ -554,6 +557,14 @@ public:
     });
   }
 
+  [[nodiscard]] bool lowerGetPointer(Function &F) {
+    // These should have already been handled in DXILResourceAccess, so we can
+    // just clean up the dead prototype.
+    assert(F.user_empty() && "getpointer operations should have been removed");
+    F.eraseFromParent();
+    return false;
+  }
+
   [[nodiscard]] bool lowerTypedBufferStore(Function &F) {
     IRBuilder<> &IRB = OpBuilder.getIRB();
     Type *Int8Ty = IRB.getInt8Ty();
@@ -707,6 +718,9 @@ public:
       case Intrinsic::dx_handle_fromBinding:
         HasErrors |= lowerHandleFromBinding(F);
         break;
+      case Intrinsic::dx_resource_getpointer:
+        HasErrors |= lowerGetPointer(F);
+        break;
       case Intrinsic::dx_typedBufferLoad:
         HasErrors |= lowerTypedBufferLoad(F, /*HasCheckBit=*/false);
         break;
@@ -752,6 +766,8 @@ PreservedAnalyses DXILOpLowering::run(Module &M, ModuleAnalysisManager &MAM) {
     return PreservedAnalyses::all();
   PreservedAnalyses PA;
   PA.preserve<DXILResourceBindingAnalysis>();
+  PA.preserve<DXILMetadataAnalysis>();
+  PA.preserve<ShaderFlagsAnalysis>();
   return PA;
 }
 
@@ -774,6 +790,9 @@ public:
     AU.addRequired<DXILResourceTypeWrapperPass>();
     AU.addRequired<DXILResourceBindingWrapperPass>();
     AU.addPreserved<DXILResourceBindingWrapperPass>();
+    AU.addPreserved<DXILResourceMDWrapper>();
+    AU.addPreserved<DXILMetadataAnalysisWrapperPass>();
+    AU.addPreserved<ShaderFlagsAnalysisWrapper>();
   }
 };
 char DXILOpLoweringLegacy::ID = 0;
