@@ -415,10 +415,10 @@ class MapInfoFinalizationPass
           argIface
               ? argIface.getMapBlockArgsStart() + argIface.numMapBlockArgs()
               : 0;
-      addOperands(
-          mapMutableOpRange,
-          llvm::dyn_cast_or_null<mlir::omp::TargetOp>(argIface.getOperation()),
-          blockArgInsertIndex);
+      addOperands(mapMutableOpRange,
+                  llvm::dyn_cast_if_present<mlir::omp::TargetOp>(
+                      argIface.getOperation()),
+                  blockArgInsertIndex);
     }
 
     if (auto targetDataOp = llvm::dyn_cast<mlir::omp::TargetDataOp>(target)) {
@@ -470,8 +470,7 @@ class MapInfoFinalizationPass
   // operation (usually function) containing the MapInfoOp because this pass
   // will mutate siblings of MapInfoOp.
   void runOnOperation() override {
-    mlir::ModuleOp module =
-        mlir::dyn_cast_or_null<mlir::ModuleOp>(getOperation());
+    mlir::ModuleOp module = getOperation();
     if (!module)
       module = getOperation()->getParentOfType<mlir::ModuleOp>();
     fir::KindMapping kindMap = fir::getKindMapping(module);
