@@ -2095,6 +2095,15 @@ public:
            R->getVPDefID() == VPDef::VPWidenPointerInductionSC;
   }
 
+  static inline bool classof(const VPValue *V) {
+    auto *R = V->getDefiningRecipe();
+    return R && classof(R);
+  }
+
+  static inline bool classof(const VPHeaderPHIRecipe *R) {
+    return classof(static_cast<const VPRecipeBase *>(R));
+  }
+
   virtual void execute(VPTransformState &State) override = 0;
 
   /// Returns the step value of the induction.
@@ -3844,9 +3853,13 @@ public:
   VPBasicBlock *getEntry() { return Entry; }
   const VPBasicBlock *getEntry() const { return Entry; }
 
-  /// Returns the preheader of the vector loop region.
+  /// Returns the preheader of the vector loop region, if one exists, or null
+  /// otherwise.
   VPBasicBlock *getVectorPreheader() {
-    return cast<VPBasicBlock>(getVectorLoopRegion()->getSinglePredecessor());
+    VPRegionBlock *VectorRegion = getVectorLoopRegion();
+    return VectorRegion
+               ? cast<VPBasicBlock>(VectorRegion->getSinglePredecessor())
+               : nullptr;
   }
 
   /// Returns the VPRegionBlock of the vector loop.
