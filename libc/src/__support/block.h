@@ -24,17 +24,6 @@
 
 namespace LIBC_NAMESPACE_DECL {
 
-namespace internal {
-// Types of corrupted blocks, and functions to crash with an error message
-// corresponding to each type.
-enum class BlockStatus {
-  VALID,
-  MISALIGNED,
-  PREV_MISMATCHED,
-  NEXT_MISMATCHED,
-};
-} // namespace internal
-
 /// Returns the value rounded down to the nearest multiple of alignment.
 LIBC_INLINE constexpr size_t align_down(size_t value, size_t alignment) {
   // Note this shouldn't overflow since the result will always be <= value.
@@ -358,6 +347,10 @@ private:
   ///   previous block is free.
   /// * If the `last` flag is set, the block is the sentinel last block. It is
   ///   summarily considered used and has no next block.
+
+public:
+  /// Only for testing.
+  static constexpr size_t PREV_FIELD_SIZE = sizeof(prev_);
 };
 
 static_assert(alignof(max_align_t) >= 4,
