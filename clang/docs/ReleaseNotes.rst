@@ -975,6 +975,8 @@ Bug Fixes to C++ Support
 - Fixed a nested lambda substitution issue for constraint evaluation. (#GH123441)
 - Fixed various false diagnostics related to the use of immediate functions. (#GH123472)
 - Fix immediate escalation not propagating through inherited constructors.  (#GH112677)
+- Fixed assertions or false compiler diagnostics in the case of C++ modules for
+  lambda functions or inline friend functions defined inside templates (#GH122493).
 
 Bug Fixes to AST Handling
 ^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -1271,6 +1273,13 @@ libclang
   of a class.
 - Added ``clang_getOffsetOfBase``, which allows computing the offset of a base
   class in a class's layout.
+
+
+Code Completion
+---------------
+
+- Use ``HeuristicResolver`` (upstreamed from clangd) to improve code completion results
+  in dependent code
 
 Static Analyzer
 ---------------
