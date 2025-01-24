@@ -629,7 +629,8 @@ template <class ELFT>
 std::vector<RemoveNoteDetail::DeletedRange>
 RemoveNoteDetail::findNotesToRemove(ArrayRef<uint8_t> Data, size_t Align,
                                     ArrayRef<RemoveNoteInfo> NotesToRemove) {
-  LLVM_ELF_IMPORT_TYPES_ELFT(ELFT);
+  using Elf_Nhdr = typename ELFT::Nhdr;
+  using Elf_Note = typename ELFT::Note;
   std::vector<DeletedRange> ToRemove;
   uint64_t CurPos = 0;
   while (CurPos + sizeof(Elf_Nhdr) <= Data.size()) {
