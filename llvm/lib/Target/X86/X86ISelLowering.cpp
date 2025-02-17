@@ -6130,11 +6130,9 @@ static bool getFauxShuffleMask(SDValue N, const APInt &DemandedElts,
       return true;
     }
     // Handle CONCAT(SUB0, SUB1).
-    // Limit this to vXi64 512-bit vector cases to make the most of AVX512
-    // cross lane shuffles.
+    // Limit this to vXi64 vector cases to make the most of cross lane shuffles.
     if (Depth > 0 && InsertIdx == NumSubElts && NumElts == (2 * NumSubElts) &&
-        NumBitsPerElt == 64 && NumSizeInBits == 512 &&
-        Src.getOpcode() == ISD::INSERT_SUBVECTOR &&
+        NumBitsPerElt == 64 && Src.getOpcode() == ISD::INSERT_SUBVECTOR &&
         Src.getOperand(0).isUndef() &&
         Src.getOperand(1).getValueType() == SubVT &&
         Src.getConstantOperandVal(2) == 0) {
@@ -57584,7 +57582,7 @@ static SDValue combineConcatVectorOps(const SDLoc &DL, MVT VT,
       EVT SubVT = peekThroughBitcasts(Subs[0]).getValueType();
       if (SubVT.isSimple() && SubVT.isVector()) {
         EVT ConcatVT =
-            EVT::getVectorVT(*DAG.getContext(), SubVT.getScalarType(),
+            EVT::getVectorVT(Ctx, SubVT.getScalarType(),
                              SubVT.getVectorElementCount() * Subs.size());
         for (SDValue &Sub : Subs)
           Sub = DAG.getBitcast(SubVT, Sub);
