@@ -58006,13 +58006,19 @@ static SDValue combineConcatVectorOps(const SDLoc &DL, MVT VT,
     }
     case X86ISD::SHUFP: {
       // Add SHUFPD support if/when necessary.
-      if (!IsSplat && VT.getScalarType() == MVT::f32 &&
+      if (!IsSplat &&
+          (VT == MVT::v8f32 ||
+           (VT == MVT::v16f32 && Subtarget.useAVX512Regs())) &&
           llvm::all_of(Ops, [Op0](SDValue Op) {
             return Op.getOperand(2) == Op0.getOperand(2);
           })) {
-        return DAG.getNode(Op0.getOpcode(), DL, VT,
-                           ConcatSubOperand(VT, Ops, 0),
-                           ConcatSubOperand(VT, Ops, 1), Op0.getOperand(2));
+        SDValue Concat0 = CombineSubOperand(VT, Ops, 0);
+        SDValue Concat1 = CombineSubOperand(VT, Ops, 1);
+        if (Concat0 || Concat1)
+          return DAG.getNode(Op0.getOpcode(), DL, VT,
+                             Concat0 ? Concat0 : ConcatSubOperand(VT, Ops, 0),
+                             Concat1 ? Concat1 : ConcatSubOperand(VT, Ops, 1),
+                             Op0.getOperand(2));
       }
       break;
     }
@@ -58756,6 +58762,14 @@ static SDValue combineINSERT_SUBVECTOR(SDNode *N, SelectionDAG &DAG,
       llvm::copy(SubEltBits, VecEltBits.begin() + IdxVal);
       return getConstVector(VecEltBits, VecUndefElts, OpVT, DAG, dl);
     }
+  }
+
+  // Attempt to recursively combine to a shuffle.
+  if (isTargetShuffle(peekThroughBitcasts(Vec).getOpcode()) &&
+      isTargetShuffle(peekThroughBitcasts(SubVec).getOpcode())) {
+    SDValue Op(N, 0);
+    if (SDValue Res = combineX86ShufflesRecursively(Op, DAG, Subtarget))
+      return Res;
   }
 
   return SDValue();
