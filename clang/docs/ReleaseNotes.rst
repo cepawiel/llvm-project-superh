@@ -235,6 +235,8 @@ Improvements to Clang's diagnostics
   under the subgroup ``-Wunsafe-buffer-usage-in-libc-call``.
 - Diagnostics on chained comparisons (``a < b < c``) are now an error by default. This can be disabled with
   ``-Wno-error=parentheses``.
+- Adds an error diagnostic for out of bounds vector accesses; produces an error
+  for compile time statically provable out of bounds vector accesses.
 - The ``-Wshift-bool`` warning has been added to warn about shifting a boolean. (#GH28334)
 - Fixed diagnostics adding a trailing ``::`` when printing some source code
   constructs, like base classes.
@@ -458,6 +460,7 @@ Python Binding Changes
 OpenMP Support
 --------------
 - Added support 'no_openmp_constructs' assumption clause.
+- Added support for 'self_maps' in map and requirement clause.
 - Added support for 'omp stripe' directive.
 
 Improvements
