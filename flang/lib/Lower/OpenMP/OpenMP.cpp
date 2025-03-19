@@ -408,8 +408,7 @@ extractOmpDirective(const parser::OpenMPConstruct &ompConstruct) {
             return common::visit(
                 common::visitors{
                     [](const parser::OpenMPSimpleStandaloneConstruct &c) {
-                      return std::get<parser::OmpSimpleStandaloneDirective>(c.t)
-                          .v;
+                      return c.v.DirId();
                     },
                     [](const parser::OpenMPFlushConstruct &c) {
                       return llvm::omp::OMPD_flush;
@@ -425,9 +424,6 @@ extractOmpDirective(const parser::OpenMPConstruct &ompConstruct) {
                     },
                     [](const parser::OpenMPDepobjConstruct &c) {
                       return llvm::omp::OMPD_depobj;
-                    },
-                    [](const parser::OpenMPInteropConstruct &c) {
-                      return llvm::omp::OMPD_interop;
                     }},
                 c.u);
           },
@@ -3300,14 +3296,12 @@ static void genOMP(lower::AbstractConverter &converter, lower::SymMap &symTable,
 // OpenMPStandaloneConstruct visitors
 //===----------------------------------------------------------------------===//
 
-static void genOMP(
-    lower::AbstractConverter &converter, lower::SymMap &symTable,
-    semantics::SemanticsContext &semaCtx, lower::pft::Evaluation &eval,
-    const parser::OpenMPSimpleStandaloneConstruct &simpleStandaloneConstruct) {
-  const auto &directive = std::get<parser::OmpSimpleStandaloneDirective>(
-      simpleStandaloneConstruct.t);
-  List<Clause> clauses = makeClauses(
-      std::get<parser::OmpClauseList>(simpleStandaloneConstruct.t), semaCtx);
+static void genOMP(lower::AbstractConverter &converter, lower::SymMap &symTable,
+                   semantics::SemanticsContext &semaCtx,
+                   lower::pft::Evaluation &eval,
+                   const parser::OpenMPSimpleStandaloneConstruct &construct) {
+  const auto &directive = std::get<parser::OmpDirectiveName>(construct.v.t);
+  List<Clause> clauses = makeClauses(construct.v.Clauses(), semaCtx);
   mlir::Location currentLocation = converter.genLocation(directive.source);
 
   ConstructQueue queue{
@@ -3376,13 +3370,6 @@ static void genOMP(lower::AbstractConverter &converter, lower::SymMap &symTable,
   (void)clause;
 
   TODO(converter.getCurrentLocation(), "OpenMPDepobjConstruct");
-}
-
-static void genOMP(lower::AbstractConverter &converter, lower::SymMap &symTable,
-                   semantics::SemanticsContext &semaCtx,
-                   lower::pft::Evaluation &eval,
-                   const parser::OpenMPInteropConstruct &interopConstruct) {
-  TODO(converter.getCurrentLocation(), "OpenMPInteropConstruct");
 }
 
 static void

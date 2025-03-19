@@ -2179,30 +2179,6 @@ public:
     Walk(std::get<std::optional<std::list<Modifier>>>(x.t), ": ");
     Walk(std::get<OmpObjectList>(x.t));
   }
-  void Unparse(const OmpInteropPreference &x) { Walk(x.v, ","); }
-  void Unparse(const OmpInitClause &x) {
-    using Modifier = OmpInitClause::Modifier;
-    auto &modifiers{std::get<std::optional<std::list<Modifier>>>(x.t)};
-    bool isTypeStart{true};
-    for (const Modifier &m : *modifiers) {
-      if (auto *interopPreferenceMod{
-              std::get_if<parser::OmpInteropPreference>(&m.u)}) {
-        Put("PREFER_TYPE(");
-        Walk(*interopPreferenceMod);
-        Put("),");
-      } else if (auto *interopTypeMod{
-                     std::get_if<parser::OmpInteropType>(&m.u)}) {
-        if (isTypeStart) {
-          isTypeStart = false;
-        } else {
-          Put(",");
-        }
-        Walk(*interopTypeMod);
-      }
-    }
-    Put(": ");
-    Walk(std::get<OmpObject>(x.t));
-  }
   void Unparse(const OmpMapClause &x) {
     using Modifier = OmpMapClause::Modifier;
     Walk(std::get<std::optional<std::list<Modifier>>>(x.t), ": ");
@@ -2489,37 +2465,6 @@ public:
     }
   }
   void Unparse(const OmpObjectList &x) { Walk(x.v, ","); }
-  void Unparse(const OmpSimpleStandaloneDirective &x) {
-    switch (x.v) {
-    case llvm::omp::Directive::OMPD_barrier:
-      Word("BARRIER ");
-      break;
-    case llvm::omp::Directive::OMPD_scan:
-      Word("SCAN ");
-      break;
-    case llvm::omp::Directive::OMPD_taskwait:
-      Word("TASKWAIT ");
-      break;
-    case llvm::omp::Directive::OMPD_taskyield:
-      Word("TASKYIELD ");
-      break;
-    case llvm::omp::Directive::OMPD_target_enter_data:
-      Word("TARGET ENTER DATA ");
-      break;
-    case llvm::omp::Directive::OMPD_target_exit_data:
-      Word("TARGET EXIT DATA ");
-      break;
-    case llvm::omp::Directive::OMPD_target_update:
-      Word("TARGET UPDATE ");
-      break;
-    case llvm::omp::Directive::OMPD_ordered:
-      Word("ORDERED ");
-      break;
-    default:
-      // Nothing to be done
-      break;
-    }
-  }
   void Unparse(const OmpBlockDirective &x) {
     switch (x.v) {
     case llvm::omp::Directive::OMPD_masked:
@@ -2764,15 +2709,6 @@ public:
     Put("\n");
     EndOpenMP();
   }
-
-  void Unparse(const OpenMPInteropConstruct &x) {
-    BeginOpenMP();
-    Word("!$OMP INTEROP");
-    Walk(std::get<OmpClauseList>(x.t));
-    Put("\n");
-    EndOpenMP();
-  }
-
   void Unparse(const OpenMPDeclarativeAssumes &x) {
     BeginOpenMP();
     Word("!$OMP ASSUMES ");
@@ -2957,8 +2893,7 @@ public:
   void Unparse(const OpenMPSimpleStandaloneConstruct &x) {
     BeginOpenMP();
     Word("!$OMP ");
-    Walk(std::get<OmpSimpleStandaloneDirective>(x.t));
-    Walk(std::get<OmpClauseList>(x.t));
+    Walk(x.v);
     Put("\n");
     EndOpenMP();
   }
@@ -3070,7 +3005,6 @@ public:
       OmpDeviceTypeClause, DeviceTypeDescription) // OMP device_type
   WALK_NESTED_ENUM(OmpReductionModifier, Value) // OMP reduction-modifier
   WALK_NESTED_ENUM(OmpExpectation, Value) // OMP motion-expectation
-  WALK_NESTED_ENUM(OmpInteropType, Value) // OMP InteropType
   WALK_NESTED_ENUM(OmpOrderClause, Ordering) // OMP ordering
   WALK_NESTED_ENUM(OmpOrderModifier, Value) // OMP order-modifier
   WALK_NESTED_ENUM(OmpPrescriptiveness, Value) // OMP prescriptiveness

@@ -878,21 +878,17 @@ void OmpStructureChecker::CheckSIMDNest(const parser::OpenMPConstruct &c) {
             }
           },
           [&](const parser::OpenMPStandaloneConstruct &c) {
-            if (const auto &simpleConstruct =
-                    std::get_if<parser::OpenMPSimpleStandaloneConstruct>(
-                        &c.u)) {
-              const auto &dir{std::get<parser::OmpSimpleStandaloneDirective>(
-                  simpleConstruct->t)};
-              if (dir.v == llvm::omp::Directive::OMPD_ordered) {
-                const auto &clauses{
-                    std::get<parser::OmpClauseList>(simpleConstruct->t)};
-                for (const auto &clause : clauses.v) {
-                  if (std::get_if<parser::OmpClause::Simd>(&clause.u)) {
+            if (auto *ssc{std::get_if<parser::OpenMPSimpleStandaloneConstruct>(
+                    &c.u)}) {
+              llvm::omp::Directive dirId{ssc->v.DirId()};
+              if (dirId == llvm::omp::Directive::OMPD_ordered) {
+                for (const parser::OmpClause &x : ssc->v.Clauses().v) {
+                  if (x.Id() == llvm::omp::Clause::OMPC_simd) {
                     eligibleSIMD = true;
                     break;
                   }
                 }
-              } else if (dir.v == llvm::omp::Directive::OMPD_scan) {
+              } else if (dirId == llvm::omp::Directive::OMPD_scan) {
                 eligibleSIMD = true;
               }
             }
@@ -944,15 +940,15 @@ void OmpStructureChecker::CheckTargetNest(const parser::OpenMPConstruct &c) {
             common::visit(
                 common::visitors{
                     [&](const parser::OpenMPSimpleStandaloneConstruct &c) {
-                      const auto &dir{
-                          std::get<parser::OmpSimpleStandaloneDirective>(c.t)};
-                      if (dir.v == llvm::omp::Directive::OMPD_target_update ||
-                          dir.v ==
-                              llvm::omp::Directive::OMPD_target_enter_data ||
-                          dir.v ==
-                              llvm::omp::Directive::OMPD_target_exit_data) {
+                      switch (llvm::omp::Directive dirId{c.v.DirId()}) {
+                      case llvm::omp::Directive::OMPD_target_update:
+                      case llvm::omp::Directive::OMPD_target_enter_data:
+                      case llvm::omp::Directive::OMPD_target_exit_data:
                         eligibleTarget = false;
-                        ineligibleTargetDir = dir.v;
+                        ineligibleTargetDir = dirId;
+                        break;
+                      default:
+                        break;
                       }
                     },
                     [&](const auto &c) {},
@@ -1978,7 +1974,7 @@ void OmpStructureChecker::Leave(const parser::OpenMPAllocatorsConstruct &x) {
 
 void OmpStructureChecker::CheckScan(
     const parser::OpenMPSimpleStandaloneConstruct &x) {
-  if (std::get<parser::OmpClauseList>(x.t).v.size() != 1) {
+  if (x.v.Clauses().v.size() != 1) {
     context_.Say(x.source,
         "Exactly one of EXCLUSIVE or INCLUSIVE clause is expected"_err_en_US);
   }
@@ -2183,7 +2179,7 @@ void OmpStructureChecker::CheckDependenceType(
 
 void OmpStructureChecker::Enter(
     const parser::OpenMPSimpleStandaloneConstruct &x) {
-  const auto &dir{std::get<parser::OmpSimpleStandaloneDirective>(x.t)};
+  const auto &dir{std::get<parser::OmpDirectiveName>(x.v.t)};
   PushContextAndClauseSets(dir.source, dir.v);
   switch (dir.v) {
   case llvm::omp::Directive::OMPD_barrier:
@@ -5663,88 +5659,6 @@ void OmpStructureChecker::Leave(const parser::DoConstruct &x) {
 #endif
   loopStack_.pop_back();
   Base::Leave(x);
-}
-
-void OmpStructureChecker::Enter(const parser::OpenMPInteropConstruct &x) {
-  bool isDependClauseOccured{false};
-  int targetCount{0}, targetSyncCount{0};
-  const auto &dir{std::get<parser::Verbatim>(x.t)};
-  std::set<const Symbol *> objectSymbolList;
-  PushContextAndClauseSets(dir.source, llvm::omp::Directive::OMPD_interop);
-  const auto &clauseList{std::get<parser::OmpClauseList>(x.t)};
-  for (const auto &clause : clauseList.v) {
-    common::visit(
-        common::visitors{
-            [&](const parser::OmpClause::Init &initClause) {
-              if (OmpVerifyModifiers(initClause.v, llvm::omp::OMPC_init,
-                      GetContext().directiveSource, context_)) {
-
-                auto &modifiers{OmpGetModifiers(initClause.v)};
-                auto &&interopTypeModifier{
-                    OmpGetRepeatableModifier<parser::OmpInteropType>(
-                        modifiers)};
-                for (const auto &it : interopTypeModifier) {
-                  if (it->v == parser::OmpInteropType::Value::TargetSync) {
-                    ++targetSyncCount;
-                  } else {
-                    ++targetCount;
-                  }
-                }
-              }
-              const auto &interopVar{parser::Unwrap<parser::OmpObject>(
-                  std::get<parser::OmpObject>(initClause.v.t))};
-              const auto *name{parser::Unwrap<parser::Name>(interopVar)};
-              const auto *objectSymbol{name->symbol};
-              if (llvm::is_contained(objectSymbolList, objectSymbol)) {
-                context_.Say(GetContext().directiveSource,
-                    "Each interop-var may be speciﬁed for at most one action-clause of each INTEROP construct."_err_en_US);
-              } else {
-                objectSymbolList.insert(objectSymbol);
-              }
-            },
-            [&](const parser::OmpClause::Depend &dependClause) {
-              isDependClauseOccured = true;
-            },
-            [&](const parser::OmpClause::Destroy &destroyClause) {
-              const auto &interopVar{
-                  parser::Unwrap<parser::OmpObject>(destroyClause.v)};
-              const auto *name{parser::Unwrap<parser::Name>(interopVar)};
-              const auto *objectSymbol{name->symbol};
-              if (llvm::is_contained(objectSymbolList, objectSymbol)) {
-                context_.Say(GetContext().directiveSource,
-                    "Each interop-var may be speciﬁed for at most one action-clause of each INTEROP construct."_err_en_US);
-              } else {
-                objectSymbolList.insert(objectSymbol);
-              }
-            },
-            [&](const parser::OmpClause::Use &useClause) {
-              const auto &interopVar{
-                  parser::Unwrap<parser::OmpObject>(useClause.v)};
-              const auto *name{parser::Unwrap<parser::Name>(interopVar)};
-              const auto *objectSymbol{name->symbol};
-              if (llvm::is_contained(objectSymbolList, objectSymbol)) {
-                context_.Say(GetContext().directiveSource,
-                    "Each interop-var may be speciﬁed for at most one action-clause of each INTEROP construct."_err_en_US);
-              } else {
-                objectSymbolList.insert(objectSymbol);
-              }
-            },
-            [&](const auto &) {},
-        },
-        clause.u);
-  }
-  if (targetCount > 1 || targetSyncCount > 1) {
-    context_.Say(GetContext().directiveSource,
-        "Each interop-type may be speciﬁed at most once."_err_en_US);
-  }
-  if (isDependClauseOccured && !targetSyncCount) {
-    context_.Say(GetContext().directiveSource,
-        "A DEPEND clause can only appear on the directive if the interop-type includes TARGETSYNC"_err_en_US);
-  }
-}
-
-void OmpStructureChecker::Leave(const parser::OpenMPInteropConstruct &) {
-  dirContext_.pop_back();
 }
 
 void OmpStructureChecker::CheckAllowedRequiresClause(llvmOmpClause clause) {
