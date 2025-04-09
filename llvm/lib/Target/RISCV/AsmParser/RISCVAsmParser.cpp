@@ -135,7 +135,7 @@ class RISCVAsmParser : public MCTargetAsmParser {
 
   // Helper to emit a combination of AUIPC and SecondOpcode. Used to implement
   // helpers such as emitLoadLocalAddress and emitLoadAddress.
-  void emitAuipcInstPair(MCOperand DestReg, MCOperand TmpReg,
+  void emitAuipcInstPair(MCRegister DestReg, MCRegister TmpReg,
                          const MCExpr *Symbol, RISCVMCExpr::Specifier VKHi,
                          unsigned SecondOpcode, SMLoc IDLoc, MCStreamer &Out);
 
@@ -3302,7 +3302,7 @@ void RISCVAsmParser::emitLoadImm(MCRegister DestReg, int64_t Value,
   }
 }
 
-void RISCVAsmParser::emitAuipcInstPair(MCOperand DestReg, MCOperand TmpReg,
+void RISCVAsmParser::emitAuipcInstPair(MCRegister DestReg, MCRegister TmpReg,
                                        const MCExpr *Symbol,
                                        RISCVMCExpr::Specifier VKHi,
                                        unsigned SecondOpcode, SMLoc IDLoc,
@@ -3316,15 +3316,15 @@ void RISCVAsmParser::emitAuipcInstPair(MCOperand DestReg, MCOperand TmpReg,
   Out.emitLabel(TmpLabel);
 
   const RISCVMCExpr *SymbolHi = RISCVMCExpr::create(Symbol, VKHi, Ctx);
-  emitToStreamer(
-      Out, MCInstBuilder(RISCV::AUIPC).addOperand(TmpReg).addExpr(SymbolHi));
+  emitToStreamer(Out,
+                 MCInstBuilder(RISCV::AUIPC).addReg(TmpReg).addExpr(SymbolHi));
 
   const MCExpr *RefToLinkTmpLabel = RISCVMCExpr::create(
       MCSymbolRefExpr::create(TmpLabel, Ctx), RISCVMCExpr::VK_PCREL_LO, Ctx);
 
   emitToStreamer(Out, MCInstBuilder(SecondOpcode)
-                          .addOperand(DestReg)
-                          .addOperand(TmpReg)
+                          .addReg(DestReg)
+                          .addReg(TmpReg)
                           .addExpr(RefToLinkTmpLabel));
 }
 
@@ -3336,7 +3336,7 @@ void RISCVAsmParser::emitLoadLocalAddress(MCInst &Inst, SMLoc IDLoc,
   // expands to
   //   TmpLabel: AUIPC rdest, %pcrel_hi(symbol)
   //             ADDI rdest, rdest, %pcrel_lo(TmpLabel)
-  MCOperand DestReg = Inst.getOperand(0);
+  MCRegister DestReg = Inst.getOperand(0).getReg();
   const MCExpr *Symbol = Inst.getOperand(1).getExpr();
   emitAuipcInstPair(DestReg, DestReg, Symbol, RISCVMCExpr::VK_PCREL_HI,
                     RISCV::ADDI, IDLoc, Out);
@@ -3350,7 +3350,7 @@ void RISCVAsmParser::emitLoadGlobalAddress(MCInst &Inst, SMLoc IDLoc,
   // expands to
   //   TmpLabel: AUIPC rdest, %got_pcrel_hi(symbol)
   //             Lx rdest, %pcrel_lo(TmpLabel)(rdest)
-  MCOperand DestReg = Inst.getOperand(0);
+  MCRegister DestReg = Inst.getOperand(0).getReg();
   const MCExpr *Symbol = Inst.getOperand(1).getExpr();
   unsigned SecondOpcode = isRV64() ? RISCV::LD : RISCV::LW;
   emitAuipcInstPair(DestReg, DestReg, Symbol, RISCVMCExpr::VK_GOT_HI,
@@ -3380,7 +3380,7 @@ void RISCVAsmParser::emitLoadTLSIEAddress(MCInst &Inst, SMLoc IDLoc,
   // expands to
   //   TmpLabel: AUIPC rdest, %tls_ie_pcrel_hi(symbol)
   //             Lx rdest, %pcrel_lo(TmpLabel)(rdest)
-  MCOperand DestReg = Inst.getOperand(0);
+  MCRegister DestReg = Inst.getOperand(0).getReg();
   const MCExpr *Symbol = Inst.getOperand(1).getExpr();
   unsigned SecondOpcode = isRV64() ? RISCV::LD : RISCV::LW;
   emitAuipcInstPair(DestReg, DestReg, Symbol, RISCVMCExpr::VK_TLS_GOT_HI,
@@ -3395,7 +3395,7 @@ void RISCVAsmParser::emitLoadTLSGDAddress(MCInst &Inst, SMLoc IDLoc,
   // expands to
   //   TmpLabel: AUIPC rdest, %tls_gd_pcrel_hi(symbol)
   //             ADDI rdest, rdest, %pcrel_lo(TmpLabel)
-  MCOperand DestReg = Inst.getOperand(0);
+  MCRegister DestReg = Inst.getOperand(0).getReg();
   const MCExpr *Symbol = Inst.getOperand(1).getExpr();
   emitAuipcInstPair(DestReg, DestReg, Symbol, RISCVMCExpr::VK_TLS_GD_HI,
                     RISCV::ADDI, IDLoc, Out);
@@ -3412,9 +3412,16 @@ void RISCVAsmParser::emitLoadStoreSymbol(MCInst &Inst, unsigned Opcode,
   //   TmpLabel: AUIPC tmp, %pcrel_hi(symbol)
   //             [S|L]X    rd, %pcrel_lo(TmpLabel)(tmp)
   unsigned DestRegOpIdx = HasTmpReg ? 1 : 0;
-  MCOperand DestReg = Inst.getOperand(DestRegOpIdx);
+  MCRegister DestReg = Inst.getOperand(DestRegOpIdx).getReg();
   unsigned SymbolOpIdx = HasTmpReg ? 2 : 1;
-  MCOperand TmpReg = Inst.getOperand(0);
+  MCRegister TmpReg = Inst.getOperand(0).getReg();
+
+  // If TmpReg is a GPR pair, get the even register.
+  if (RISCVMCRegisterClasses[RISCV::GPRPairRegClassID].contains(TmpReg)) {
+    const MCRegisterInfo *RI = getContext().getRegisterInfo();
+    TmpReg = RI->getSubReg(TmpReg, RISCV::sub_gpr_even);
+  }
+
   const MCExpr *Symbol = Inst.getOperand(SymbolOpIdx).getExpr();
   emitAuipcInstPair(DestReg, TmpReg, Symbol, RISCVMCExpr::VK_PCREL_HI, Opcode,
                     IDLoc, Out);
@@ -3746,18 +3753,23 @@ bool RISCVAsmParser::processInstruction(MCInst &Inst, SMLoc IDLoc,
     emitLoadTLSGDAddress(Inst, IDLoc, Out);
     return false;
   case RISCV::PseudoLB:
+  case RISCV::PseudoQC_E_LB:
     emitLoadStoreSymbol(Inst, RISCV::LB, IDLoc, Out, /*HasTmpReg=*/false);
     return false;
   case RISCV::PseudoLBU:
+  case RISCV::PseudoQC_E_LBU:
     emitLoadStoreSymbol(Inst, RISCV::LBU, IDLoc, Out, /*HasTmpReg=*/false);
     return false;
   case RISCV::PseudoLH:
+  case RISCV::PseudoQC_E_LH:
     emitLoadStoreSymbol(Inst, RISCV::LH, IDLoc, Out, /*HasTmpReg=*/false);
     return false;
   case RISCV::PseudoLHU:
+  case RISCV::PseudoQC_E_LHU:
     emitLoadStoreSymbol(Inst, RISCV::LHU, IDLoc, Out, /*HasTmpReg=*/false);
     return false;
   case RISCV::PseudoLW:
+  case RISCV::PseudoQC_E_LW:
     emitLoadStoreSymbol(Inst, RISCV::LW, IDLoc, Out, /*HasTmpReg=*/false);
     return false;
   case RISCV::PseudoLWU:
@@ -3765,6 +3777,9 @@ bool RISCVAsmParser::processInstruction(MCInst &Inst, SMLoc IDLoc,
     return false;
   case RISCV::PseudoLD:
     emitLoadStoreSymbol(Inst, RISCV::LD, IDLoc, Out, /*HasTmpReg=*/false);
+    return false;
+  case RISCV::PseudoLD_RV32:
+    emitLoadStoreSymbol(Inst, RISCV::LD_RV32, IDLoc, Out, /*HasTmpReg=*/false);
     return false;
   case RISCV::PseudoFLH:
     emitLoadStoreSymbol(Inst, RISCV::FLH, IDLoc, Out, /*HasTmpReg=*/true);
@@ -3776,16 +3791,22 @@ bool RISCVAsmParser::processInstruction(MCInst &Inst, SMLoc IDLoc,
     emitLoadStoreSymbol(Inst, RISCV::FLD, IDLoc, Out, /*HasTmpReg=*/true);
     return false;
   case RISCV::PseudoSB:
+  case RISCV::PseudoQC_E_SB:
     emitLoadStoreSymbol(Inst, RISCV::SB, IDLoc, Out, /*HasTmpReg=*/true);
     return false;
   case RISCV::PseudoSH:
+  case RISCV::PseudoQC_E_SH:
     emitLoadStoreSymbol(Inst, RISCV::SH, IDLoc, Out, /*HasTmpReg=*/true);
     return false;
   case RISCV::PseudoSW:
+  case RISCV::PseudoQC_E_SW:
     emitLoadStoreSymbol(Inst, RISCV::SW, IDLoc, Out, /*HasTmpReg=*/true);
     return false;
   case RISCV::PseudoSD:
     emitLoadStoreSymbol(Inst, RISCV::SD, IDLoc, Out, /*HasTmpReg=*/true);
+    return false;
+  case RISCV::PseudoSD_RV32:
+    emitLoadStoreSymbol(Inst, RISCV::SD_RV32, IDLoc, Out, /*HasTmpReg=*/true);
     return false;
   case RISCV::PseudoFSH:
     emitLoadStoreSymbol(Inst, RISCV::FSH, IDLoc, Out, /*HasTmpReg=*/true);
