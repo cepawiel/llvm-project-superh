@@ -115,9 +115,10 @@ bool MCAsmBackend::shouldForceRelocation(const MCAssembler &, const MCFixup &,
   return Target.getSpecifier();
 }
 
-bool MCAsmBackend::fixupNeedsRelaxationAdvanced(
-    const MCAssembler &, const MCRelaxableFragment &, const MCFixup &Fixup,
-    const MCValue &, uint64_t Value, bool Resolved, bool WasForced) const {
+bool MCAsmBackend::fixupNeedsRelaxationAdvanced(const MCAssembler &,
+                                                const MCFixup &Fixup,
+                                                const MCValue &, uint64_t Value,
+                                                bool Resolved) const {
   if (!Resolved)
     return true;
   return fixupNeedsRelaxation(Fixup, Value);
