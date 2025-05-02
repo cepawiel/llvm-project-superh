@@ -134,6 +134,8 @@ Resolutions to C++ Defect Reports
 - Bumped the ``__cpp_constexpr`` feature-test macro to ``202002L`` in C++20 mode as indicated in
   `P2493R0 <https://wg21.link/P2493R0>`_.
 
+- Implemented `CWG3005 Function parameters should never be name-independent <https://wg21.link/CWG3005>`_.
+
 C Language Changes
 ------------------
 
@@ -558,6 +560,9 @@ Bug Fixes to Compiler Builtins
 - The signature for ``__builtin___clear_cache`` was changed from
   ``void(char *, char *)`` to ``void(void *, void *)`` to match GCC's signature
   for the same builtin. (#GH47833)
+
+- ``__has_unique_object_representations(Incomplete[])`` is no longer accepted, per
+  `LWG4113 <https://cplusplus.github.io/LWG/issue4113>`_.
 
 Bug Fixes to Attribute Support
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
