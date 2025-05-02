@@ -1946,8 +1946,8 @@ QualType Sema::BuildBitIntType(bool IsUnsigned, Expr *BitWidth,
     return Context.getDependentBitIntType(IsUnsigned, BitWidth);
 
   llvm::APSInt Bits(32);
-  ExprResult ICE =
-      VerifyIntegerConstantExpression(BitWidth, &Bits, /*FIXME*/ AllowFold);
+  ExprResult ICE = VerifyIntegerConstantExpression(
+      BitWidth, &Bits, /*FIXME*/ AllowFoldKind::Allow);
 
   if (ICE.isInvalid())
     return QualType();
@@ -9585,7 +9585,7 @@ bool Sema::RequireLiteralType(SourceLocation Loc, QualType T,
           << RD;
       if (!Dtor->isUserProvided())
         SpecialMemberIsTrivial(Dtor, CXXSpecialMemberKind::Destructor,
-                               TAH_IgnoreTrivialABI,
+                               TrivialABIHandling::IgnoreTrivialABI,
                                /*Diagnose*/ true);
     }
   }

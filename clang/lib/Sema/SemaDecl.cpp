@@ -422,8 +422,9 @@ ParsedType Sema::getTypeName(const IdentifierInfo &II, SourceLocation NameLoc,
     if (CorrectedII) {
       TypeNameValidatorCCC CCC(/*AllowInvalid=*/true, isClassName,
                                AllowDeducedTemplate);
-      TypoCorrection Correction = CorrectTypo(Result.getLookupNameInfo(), Kind,
-                                              S, SS, CCC, CTK_ErrorRecovery);
+      TypoCorrection Correction =
+          CorrectTypo(Result.getLookupNameInfo(), Kind, S, SS, CCC,
+                      CorrectTypoKind::ErrorRecovery);
       IdentifierInfo *NewII = Correction.getCorrectionAsIdentifierInfo();
       TemplateTy Template;
       bool MemberOfUnknownSpecialization;
@@ -711,7 +712,7 @@ void Sema::DiagnoseUnknownTypeName(IdentifierInfo *&II,
                            /*AllowNonTemplates=*/!IsTemplateName);
   if (TypoCorrection Corrected =
           CorrectTypo(DeclarationNameInfo(II, IILoc), LookupOrdinaryName, S, SS,
-                      CCC, CTK_ErrorRecovery)) {
+                      CCC, CorrectTypoKind::ErrorRecovery)) {
     // FIXME: Support error recovery for the template-name case.
     bool CanRecover = !IsTemplateName;
     if (Corrected.isKeyword()) {
@@ -979,7 +980,7 @@ Corrected:
       SecondTry = true;
       if (TypoCorrection Corrected =
               CorrectTypo(Result.getLookupNameInfo(), Result.getLookupKind(), S,
-                          &SS, *CCC, CTK_ErrorRecovery)) {
+                          &SS, *CCC, CorrectTypoKind::ErrorRecovery)) {
         unsigned UnqualifiedDiag = diag::err_undeclared_var_use_suggest;
         unsigned QualifiedDiag = diag::err_no_member_suggest;
 
@@ -2800,7 +2801,7 @@ static bool mergeAlignedAttrs(Sema &S, NamedDecl *New, Decl *Old) {
 
 static bool mergeDeclAttribute(Sema &S, NamedDecl *D,
                                const InheritableAttr *Attr,
-                               Sema::AvailabilityMergeKind AMK) {
+                               AvailabilityMergeKind AMK) {
   // Diagnose any mutual exclusions between the attribute that we want to add
   // and attributes that already exist on the declaration.
   if (!DiagnoseMutualExclusions(S, D, Attr))
@@ -2865,9 +2866,9 @@ static bool mergeDeclAttribute(Sema &S, NamedDecl *D,
     // such attributes on a declaration at the same time.
     NewAttr = nullptr;
   else if ((isa<DeprecatedAttr>(Attr) || isa<UnavailableAttr>(Attr)) &&
-           (AMK == Sema::AMK_Override ||
-            AMK == Sema::AMK_ProtocolImplementation ||
-            AMK == Sema::AMK_OptionalProtocolImplementation))
+           (AMK == AvailabilityMergeKind::Override ||
+            AMK == AvailabilityMergeKind::ProtocolImplementation ||
+            AMK == AvailabilityMergeKind::OptionalProtocolImplementation))
     NewAttr = nullptr;
   else if (const auto *UA = dyn_cast<UuidAttr>(Attr))
     NewAttr = S.mergeUuidAttr(D, *UA, UA->getGuid(), UA->getGuidDecl());
@@ -3243,18 +3244,18 @@ void Sema::mergeDeclAttributes(NamedDecl *New, Decl *Old,
 
   for (auto *I : Old->specific_attrs<InheritableAttr>()) {
     // Ignore deprecated/unavailable/availability attributes if requested.
-    AvailabilityMergeKind LocalAMK = AMK_None;
+    AvailabilityMergeKind LocalAMK = AvailabilityMergeKind::None;
     if (isa<DeprecatedAttr>(I) ||
         isa<UnavailableAttr>(I) ||
         isa<AvailabilityAttr>(I)) {
       switch (AMK) {
-      case AMK_None:
+      case AvailabilityMergeKind::None:
         continue;
 
-      case AMK_Redeclaration:
-      case AMK_Override:
-      case AMK_ProtocolImplementation:
-      case AMK_OptionalProtocolImplementation:
+      case AvailabilityMergeKind::Redeclaration:
+      case AvailabilityMergeKind::Override:
+      case AvailabilityMergeKind::ProtocolImplementation:
+      case AvailabilityMergeKind::OptionalProtocolImplementation:
         LocalAMK = AMK;
         break;
       }
@@ -4387,10 +4388,12 @@ void Sema::mergeObjCMethodDecls(ObjCMethodDecl *newMethod,
   // Merge the attributes, including deprecated/unavailable
   AvailabilityMergeKind MergeKind =
       isa<ObjCProtocolDecl>(oldMethod->getDeclContext())
-          ? (oldMethod->isOptional() ? AMK_OptionalProtocolImplementation
-                                     : AMK_ProtocolImplementation)
-          : isa<ObjCImplDecl>(newMethod->getDeclContext()) ? AMK_Redeclaration
-                                                           : AMK_Override;
+          ? (oldMethod->isOptional()
+                 ? AvailabilityMergeKind::OptionalProtocolImplementation
+                 : AvailabilityMergeKind::ProtocolImplementation)
+      : isa<ObjCImplDecl>(newMethod->getDeclContext())
+          ? AvailabilityMergeKind::Redeclaration
+          : AvailabilityMergeKind::Override;
 
   mergeDeclAttributes(newMethod, oldMethod, MergeKind);
 
@@ -9172,7 +9175,8 @@ static NamedDecl *DiagnoseInvalidRedeclaration(
   // If the qualified name lookup yielded nothing, try typo correction
   } else if ((Correction = SemaRef.CorrectTypo(
                   Prev.getLookupNameInfo(), Prev.getLookupKind(), S,
-                  &ExtraArgs.D.getCXXScopeSpec(), CCC, Sema::CTK_ErrorRecovery,
+                  &ExtraArgs.D.getCXXScopeSpec(), CCC,
+                  CorrectTypoKind::ErrorRecovery,
                   IsLocalFriend ? nullptr : NewDC))) {
     // Set up everything for the call to ActOnFunctionDeclarator
     ExtraArgs.D.SetIdentifier(Correction.getCorrectionAsIdentifierInfo(),
@@ -12028,15 +12032,15 @@ bool Sema::CheckFunctionDeclaration(Scope *S, FunctionDecl *NewFD,
       MayNeedOverloadableChecks = true;
       switch (CheckOverload(S, NewFD, Previous, OldDecl,
                             /*NewIsUsingDecl*/ false)) {
-      case Ovl_Match:
+      case OverloadKind::Match:
         Redeclaration = true;
         break;
 
-      case Ovl_NonFunction:
+      case OverloadKind::NonFunction:
         Redeclaration = true;
         break;
 
-      case Ovl_Overload:
+      case OverloadKind::Overload:
         Redeclaration = false;
         break;
       }
@@ -16757,7 +16761,7 @@ NamedDecl *Sema::ImplicitlyDefineFunction(SourceLocation Loc,
       (Diags.getDiagnosticLevel(diag_id, Loc) >= DiagnosticsEngine::Error)) {
     DeclFilterCCC<FunctionDecl> CCC{};
     Corrected = CorrectTypo(DeclarationNameInfo(&II, Loc), LookupOrdinaryName,
-                            S, nullptr, CCC, CTK_NonError);
+                            S, nullptr, CCC, CorrectTypoKind::NonError);
   }
 
   Diag(Loc, diag_id) << &II;
@@ -18604,7 +18608,8 @@ ExprResult Sema::VerifyBitField(SourceLocation FieldLoc,
     return BitWidth;
 
   llvm::APSInt Value;
-  ExprResult ICE = VerifyIntegerConstantExpression(BitWidth, &Value, AllowFold);
+  ExprResult ICE =
+      VerifyIntegerConstantExpression(BitWidth, &Value, AllowFoldKind::Allow);
   if (ICE.isInvalid())
     return ICE;
   BitWidth = ICE.get();
@@ -19847,9 +19852,9 @@ EnumConstantDecl *Sema::CheckEnumConstant(EnumDecl *Enum,
         else
           Val = Converted.get();
       } else if (!Val->isValueDependent() &&
-                 !(Val =
-                       VerifyIntegerConstantExpression(Val, &EnumVal, AllowFold)
-                           .get())) {
+                 !(Val = VerifyIntegerConstantExpression(Val, &EnumVal,
+                                                         AllowFoldKind::Allow)
+                             .get())) {
         // C99 6.7.2.2p2: Make sure we have an integer constant expression.
       } else {
         if (Enum->isComplete()) {

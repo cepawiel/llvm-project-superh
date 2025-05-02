@@ -1200,9 +1200,9 @@ static bool checkArgPlaceholdersForOverload(Sema &S, MultiExprArg Args,
   return false;
 }
 
-Sema::OverloadKind
-Sema::CheckOverload(Scope *S, FunctionDecl *New, const LookupResult &Old,
-                    NamedDecl *&Match, bool NewIsUsingDecl) {
+OverloadKind Sema::CheckOverload(Scope *S, FunctionDecl *New,
+                                 const LookupResult &Old, NamedDecl *&Match,
+                                 bool NewIsUsingDecl) {
   for (LookupResult::iterator I = Old.begin(), E = Old.end();
          I != E; ++I) {
     NamedDecl *OldD = *I;
@@ -1244,14 +1244,14 @@ Sema::CheckOverload(Scope *S, FunctionDecl *New, const LookupResult &Old,
           continue;
 
         Match = *I;
-        return Ovl_Match;
+        return OverloadKind::Match;
       }
 
       // Builtins that have custom typechecking or have a reference should
       // not be overloadable or redeclarable.
       if (!getASTContext().canBuiltinBeRedeclared(OldF)) {
         Match = *I;
-        return Ovl_NonFunction;
+        return OverloadKind::NonFunction;
       }
     } else if (isa<UsingDecl>(OldD) || isa<UsingPackDecl>(OldD)) {
       // We can overload with these, which can show up when doing
@@ -1268,14 +1268,14 @@ Sema::CheckOverload(Scope *S, FunctionDecl *New, const LookupResult &Old,
       // member, the using declaration can only introduce an enumerator.
       if (UUD->getQualifier()->isDependent() && !UUD->isCXXClassMember()) {
         Match = *I;
-        return Ovl_NonFunction;
+        return OverloadKind::NonFunction;
       }
     } else {
       // (C++ 13p1):
       //   Only function declarations can be overloaded; object and type
       //   declarations cannot be overloaded.
       Match = *I;
-      return Ovl_NonFunction;
+      return OverloadKind::NonFunction;
     }
   }
 
@@ -1303,14 +1303,14 @@ Sema::CheckOverload(Scope *S, FunctionDecl *New, const LookupResult &Old,
     if (CheckFunctionTemplateSpecialization(New, nullptr, TemplateSpecResult,
                                             /*QualifiedFriend*/true)) {
       New->setInvalidDecl();
-      return Ovl_Overload;
+      return OverloadKind::Overload;
     }
 
     Match = TemplateSpecResult.getAsSingle<FunctionDecl>();
-    return Ovl_Match;
+    return OverloadKind::Match;
   }
 
-  return Ovl_Overload;
+  return OverloadKind::Overload;
 }
 
 template <typename AttrT> static bool hasExplicitAttr(const FunctionDecl *D) {
@@ -2510,23 +2510,24 @@ static bool IsStandardConversion(Sema &S, Expr* From, QualType ToType,
     return false;
 
   ExprResult ER = ExprResult{From};
-  Sema::AssignConvertType Conv =
+  AssignConvertType Conv =
       S.CheckSingleAssignmentConstraints(ToType, ER,
                                          /*Diagnose=*/false,
                                          /*DiagnoseCFAudited=*/false,
                                          /*ConvertRHS=*/false);
   ImplicitConversionKind SecondConv;
   switch (Conv) {
-  case Sema::Compatible:
-  case Sema::CompatibleVoidPtrToNonVoidPtr: // __attribute__((overloadable))
+  case AssignConvertType::Compatible:
+  case AssignConvertType::
+      CompatibleVoidPtrToNonVoidPtr: // __attribute__((overloadable))
     SecondConv = ICK_C_Only_Conversion;
     break;
   // For our purposes, discarding qualifiers is just as bad as using an
   // incompatible pointer. Note that an IncompatiblePointer conversion can drop
   // qualifiers, as well.
-  case Sema::CompatiblePointerDiscardsQualifiers:
-  case Sema::IncompatiblePointer:
-  case Sema::IncompatiblePointerSign:
+  case AssignConvertType::CompatiblePointerDiscardsQualifiers:
+  case AssignConvertType::IncompatiblePointer:
+  case AssignConvertType::IncompatiblePointerSign:
     SecondConv = ICK_Incompatible_Pointer_Conversion;
     break;
   default:
