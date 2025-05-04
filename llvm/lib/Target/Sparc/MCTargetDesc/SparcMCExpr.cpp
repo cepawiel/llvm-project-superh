@@ -56,7 +56,6 @@ StringRef SparcMCExpr::getSpecifierName(SparcMCExpr::Specifier S) {
   case VK_GOT22:         return "hi";
   case VK_GOT10:         return "lo";
   case VK_GOT13:         return {};
-  case VK_13:            return {};
   case VK_WDISP30:       return {};
   case VK_WPLT30:        return {};
   case VK_R_DISP32:      return "r_disp32";
@@ -80,9 +79,9 @@ StringRef SparcMCExpr::getSpecifierName(SparcMCExpr::Specifier S) {
   case VK_TLS_LE_LOX10:  return "tle_lox10";
   case VK_HIX22:         return "hix";
   case VK_LOX10:         return "lox";
-  case VK_GOTDATA_HIX22: return "gdop_hix22";
-  case VK_GOTDATA_LOX10: return "gdop_lox10";
-  case VK_GOTDATA_OP:    return "gdop";
+  case VK_GOTDATA_OP_HIX22: return "gdop_hix22";
+  case VK_GOTDATA_OP_LOX10: return "gdop_lox10";
+  case VK_GOTDATA_OP:       return "gdop";
   }
   // clang-format on
   llvm_unreachable("Unhandled SparcMCExpr::Specifier");
@@ -126,8 +125,8 @@ SparcMCExpr::Specifier SparcMCExpr::parseSpecifier(StringRef name) {
       .Case("tle_lox10", VK_TLS_LE_LOX10)
       .Case("hix", VK_HIX22)
       .Case("lox", VK_LOX10)
-      .Case("gdop_hix22", VK_GOTDATA_HIX22)
-      .Case("gdop_lox10", VK_GOTDATA_LOX10)
+      .Case("gdop_hix22", VK_GOTDATA_OP_HIX22)
+      .Case("gdop_lox10", VK_GOTDATA_OP_LOX10)
       .Case("gdop", VK_GOTDATA_OP)
       .Default(VK_None);
 }
@@ -149,7 +148,6 @@ uint16_t SparcMCExpr::getFixupKind() const {
   case VK_GOT22:         return ELF::R_SPARC_GOT22;
   case VK_GOT10:         return ELF::R_SPARC_GOT10;
   case VK_GOT13:         return ELF::R_SPARC_GOT13;
-  case VK_13:            return Sparc::fixup_sparc_13;
   case VK_WPLT30:        return Sparc::fixup_sparc_wplt30;
   case VK_WDISP30:       return Sparc::fixup_sparc_call30;
   case VK_TLS_GD_HI22:   return ELF::R_SPARC_TLS_GD_HI22;
@@ -172,9 +170,9 @@ uint16_t SparcMCExpr::getFixupKind() const {
   case VK_TLS_LE_LOX10:  return ELF::R_SPARC_TLS_LE_LOX10;
   case VK_HIX22:         return Sparc::fixup_sparc_hix22;
   case VK_LOX10:         return Sparc::fixup_sparc_lox10;
-  case VK_GOTDATA_HIX22: return Sparc::fixup_sparc_gotdata_hix22;
-  case VK_GOTDATA_LOX10: return Sparc::fixup_sparc_gotdata_lox10;
-  case VK_GOTDATA_OP:    return Sparc::fixup_sparc_gotdata_op;
+  case VK_GOTDATA_OP_HIX22: return ELF::R_SPARC_GOTDATA_OP_HIX22;
+  case VK_GOTDATA_OP_LOX10: return ELF::R_SPARC_GOTDATA_OP_LOX10;
+  case VK_GOTDATA_OP:       return ELF::R_SPARC_GOTDATA_OP;
   }
   // clang-format on
 }

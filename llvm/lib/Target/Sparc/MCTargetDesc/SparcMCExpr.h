@@ -37,7 +37,6 @@ public:
     VK_GOT22,
     VK_GOT10,
     VK_GOT13,
-    VK_13,
     VK_WPLT30,
     VK_WDISP30,
     VK_R_DISP32,
@@ -61,8 +60,8 @@ public:
     VK_TLS_LE_LOX10,
     VK_HIX22,
     VK_LOX10,
-    VK_GOTDATA_HIX22,
-    VK_GOTDATA_LOX10,
+    VK_GOTDATA_OP_HIX22,
+    VK_GOTDATA_OP_LOX10,
     VK_GOTDATA_OP,
   };
 
