@@ -287,6 +287,8 @@ Non-comprehensive list of changes in this release
   stack space when running on Apple AArch64 based platforms. This means that
   stack traces of Clang from debuggers, crashes, and profilers may look
   different than before.
+- Fixed a crash when a VLA with an invalid size expression was used within a
+  ``sizeof`` or ``typeof`` expression. (#GH138444)
 
 New Compiler Flags
 ------------------
@@ -591,6 +593,9 @@ Bug Fixes to Attribute Support
   C and C++ mode for the standard spellings (other spellings, such as
   ``__attribute__((unused))`` are still ignored after the definition, though
   this behavior may be relaxed in the future). (#GH135481)
+
+- Clang will warn if a complete type specializes a deprecated partial specialization.
+  (#GH44496)
 
 Bug Fixes to C++ Support
 ^^^^^^^^^^^^^^^^^^^^^^^^
