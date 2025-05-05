@@ -11,6 +11,7 @@
 #include "TargetInfo/SparcTargetInfo.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/BinaryFormat/ELF.h"
 #include "llvm/MC/MCAsmMacro.h"
 #include "llvm/MC/MCContext.h"
 #include "llvm/MC/MCExpr.h"
@@ -1322,12 +1323,7 @@ ParseStatus SparcAsmParser::parseCallTarget(OperandVector &Operands) {
   if (getParser().parseExpression(DestValue))
     return ParseStatus::NoMatch;
 
-  bool IsPic = getContext().getObjectFileInfo()->isPositionIndependent();
-  SparcMCExpr::Specifier Kind =
-      IsPic ? SparcMCExpr::VK_WPLT30 : SparcMCExpr::VK_WDISP30;
-
-  const MCExpr *DestExpr = SparcMCExpr::create(Kind, DestValue, getContext());
-  Operands.push_back(SparcOperand::CreateImm(DestExpr, S, E));
+  Operands.push_back(SparcOperand::CreateImm(DestValue, S, E));
   return ParseStatus::Success;
 }
 
@@ -1682,12 +1678,12 @@ SparcAsmParser::adjustPICRelocation(SparcMCExpr::Specifier VK,
     switch(VK) {
     default: break;
     case SparcMCExpr::VK_LO:
-      VK = (hasGOTReference(subExpr) ? SparcMCExpr::VK_PC10
-                                     : SparcMCExpr::VK_GOT10);
+      VK = SparcMCExpr::Specifier(
+          hasGOTReference(subExpr) ? ELF::R_SPARC_PC10 : ELF::R_SPARC_GOT10);
       break;
     case SparcMCExpr::VK_HI:
-      VK = (hasGOTReference(subExpr) ? SparcMCExpr::VK_PC22
-                                     : SparcMCExpr::VK_GOT22);
+      VK = SparcMCExpr::Specifier(
+          hasGOTReference(subExpr) ? ELF::R_SPARC_PC22 : ELF::R_SPARC_GOT22);
       break;
     }
   }

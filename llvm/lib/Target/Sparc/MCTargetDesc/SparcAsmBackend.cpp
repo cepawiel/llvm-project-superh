@@ -24,24 +24,24 @@ using namespace llvm;
 static unsigned adjustFixupValue(unsigned Kind, uint64_t Value) {
   switch (Kind) {
   default:
-    llvm_unreachable("Unknown fixup kind!");
+    assert(uint16_t(Kind) < FirstTargetFixupKind && "Unknown fixup kind!");
+    return Value;
   case FK_Data_1:
   case FK_Data_2:
   case FK_Data_4:
   case FK_Data_8:
     return Value;
 
-  case Sparc::fixup_sparc_wplt30:
   case Sparc::fixup_sparc_call30:
     return (Value >> 2) & 0x3fffffff;
 
-  case Sparc::fixup_sparc_br22:
+  case ELF::R_SPARC_WDISP22:
     return (Value >> 2) & 0x3fffff;
 
-  case Sparc::fixup_sparc_br19:
+  case ELF::R_SPARC_WDISP19:
     return (Value >> 2) & 0x7ffff;
 
-  case Sparc::fixup_sparc_br16: {
+  case ELF::R_SPARC_WDISP16: {
     // A.3 Branch on Integer Register with Prediction (BPr)
     // Inst{21-20} = d16hi;
     // Inst{13-0}  = d16lo;
@@ -53,7 +53,7 @@ static unsigned adjustFixupValue(unsigned Kind, uint64_t Value) {
   case Sparc::fixup_sparc_hix22:
     return (~Value >> 10) & 0x3fffff;
 
-  case Sparc::fixup_sparc_pc22:
+  case ELF::R_SPARC_PC22:
   case Sparc::fixup_sparc_hi22:
   case Sparc::fixup_sparc_lm:
     return (Value >> 10) & 0x3fffff;
@@ -64,18 +64,9 @@ static unsigned adjustFixupValue(unsigned Kind, uint64_t Value) {
   case Sparc::fixup_sparc_lox10:
     return (Value & 0x3ff) | 0x1c00;
 
-  case Sparc::fixup_sparc_pc10:
+  case ELF::R_SPARC_PC10:
   case Sparc::fixup_sparc_lo10:
     return Value & 0x3ff;
-
-  case Sparc::fixup_sparc_h44:
-    return (Value >> 22) & 0x3fffff;
-
-  case Sparc::fixup_sparc_m44:
-    return (Value >> 12) & 0x3ff;
-
-  case Sparc::fixup_sparc_l44:
-    return Value & 0xfff;
 
   case Sparc::fixup_sparc_hh:
     return (Value >> 42) & 0x3fffff;
@@ -136,21 +127,12 @@ namespace {
       const static MCFixupKindInfo InfosBE[Sparc::NumTargetFixupKinds] = {
         // name                    offset bits  flags
         { "fixup_sparc_call30",     2,     30,  MCFixupKindInfo::FKF_IsPCRel },
-        { "fixup_sparc_br22",      10,     22,  MCFixupKindInfo::FKF_IsPCRel },
-        { "fixup_sparc_br19",      13,     19,  MCFixupKindInfo::FKF_IsPCRel },
-        { "fixup_sparc_br16",       0,     32,  MCFixupKindInfo::FKF_IsPCRel },
         { "fixup_sparc_13",        19,     13,  0 },
         { "fixup_sparc_hi22",      10,     22,  0 },
         { "fixup_sparc_lo10",      22,     10,  0 },
-        { "fixup_sparc_h44",       10,     22,  0 },
-        { "fixup_sparc_m44",       22,     10,  0 },
-        { "fixup_sparc_l44",       20,     12,  0 },
         { "fixup_sparc_hh",        10,     22,  0 },
         { "fixup_sparc_hm",        22,     10,  0 },
         { "fixup_sparc_lm",        10,     22,  0 },
-        { "fixup_sparc_pc22",      10,     22,  MCFixupKindInfo::FKF_IsPCRel },
-        { "fixup_sparc_pc10",      22,     10,  MCFixupKindInfo::FKF_IsPCRel },
-        { "fixup_sparc_wplt30",     2,     30,  MCFixupKindInfo::FKF_IsPCRel },
         { "fixup_sparc_hix22",         10, 22,  0 },
         { "fixup_sparc_lox10",         19, 13,  0 },
       };
@@ -158,41 +140,50 @@ namespace {
       const static MCFixupKindInfo InfosLE[Sparc::NumTargetFixupKinds] = {
         // name                    offset bits  flags
         { "fixup_sparc_call30",     0,     30,  MCFixupKindInfo::FKF_IsPCRel },
-        { "fixup_sparc_br22",       0,     22,  MCFixupKindInfo::FKF_IsPCRel },
-        { "fixup_sparc_br19",       0,     19,  MCFixupKindInfo::FKF_IsPCRel },
-        { "fixup_sparc_br16",      32,      0,  MCFixupKindInfo::FKF_IsPCRel },
         { "fixup_sparc_13",         0,     13,  0 },
         { "fixup_sparc_hi22",       0,     22,  0 },
         { "fixup_sparc_lo10",       0,     10,  0 },
-        { "fixup_sparc_h44",        0,     22,  0 },
-        { "fixup_sparc_m44",        0,     10,  0 },
-        { "fixup_sparc_l44",        0,     12,  0 },
         { "fixup_sparc_hh",         0,     22,  0 },
         { "fixup_sparc_hm",         0,     10,  0 },
         { "fixup_sparc_lm",         0,     22,  0 },
-        { "fixup_sparc_pc22",       0,     22,  MCFixupKindInfo::FKF_IsPCRel },
-        { "fixup_sparc_pc10",       0,     10,  MCFixupKindInfo::FKF_IsPCRel },
-        { "fixup_sparc_wplt30",      0,     30,  MCFixupKindInfo::FKF_IsPCRel },
         { "fixup_sparc_hix22",          0, 22,  0 },
         { "fixup_sparc_lox10",          0, 13,  0 },
       };
       // clang-format on
 
-      // Fixup kinds from .reloc directive are like R_SPARC_NONE. They do
-      // not require any extra processing.
-      if (mc::isRelocation(Kind))
-        return MCAsmBackend::getFixupKindInfo(FK_NONE);
+      if (!mc::isRelocation(Kind)) {
+        if (Kind < FirstTargetFixupKind)
+          return MCAsmBackend::getFixupKindInfo(Kind);
+        assert(unsigned(Kind - FirstTargetFixupKind) <
+                   Sparc::NumTargetFixupKinds &&
+               "Invalid kind!");
+        if (Endian == llvm::endianness::little)
+          return InfosLE[Kind - FirstTargetFixupKind];
 
-      if (Kind < FirstTargetFixupKind)
-        return MCAsmBackend::getFixupKindInfo(Kind);
+        return InfosBE[Kind - FirstTargetFixupKind];
+      }
 
-      assert(unsigned(Kind - FirstTargetFixupKind) <
-                 Sparc::NumTargetFixupKinds &&
-             "Invalid kind!");
+      MCFixupKindInfo Info{};
+      switch (uint16_t(Kind)) {
+      case ELF::R_SPARC_PC10:
+        Info = {"", 22, 10, MCFixupKindInfo::FKF_IsPCRel};
+        break;
+      case ELF::R_SPARC_PC22:
+        Info = {"", 10, 22, MCFixupKindInfo::FKF_IsPCRel};
+        break;
+      case ELF::R_SPARC_WDISP16:
+        Info = {"", 0, 32, MCFixupKindInfo::FKF_IsPCRel};
+        break;
+      case ELF::R_SPARC_WDISP19:
+        Info = {"", 13, 19, MCFixupKindInfo::FKF_IsPCRel};
+        break;
+      case ELF::R_SPARC_WDISP22:
+        Info = {"", 10, 22, MCFixupKindInfo::FKF_IsPCRel};
+        break;
+      }
       if (Endian == llvm::endianness::little)
-        return InfosLE[Kind - FirstTargetFixupKind];
-
-      return InfosBE[Kind - FirstTargetFixupKind];
+        Info.TargetOffset = 32 - Info.TargetOffset - Info.TargetSize;
+      return Info;
     }
 
     bool shouldForceRelocation(const MCAssembler &, const MCFixup &,
@@ -233,8 +224,7 @@ namespace {
                     const MCValue &Target, MutableArrayRef<char> Data,
                     uint64_t Value, bool IsResolved,
                     const MCSubtargetInfo *STI) const override {
-
-      if (mc::isRelocation(Fixup.getKind()))
+      if (mc::isRelocRelocation(Fixup.getKind()))
         return;
       Value = adjustFixupValue(Fixup.getKind(), Value);
       if (!Value) return;           // Doesn't change encoding.
