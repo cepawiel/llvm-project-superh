@@ -78,9 +78,8 @@ public:
   /// post layout binding. The implementation is responsible for storing
   /// information about the relocation so that it can be emitted during
   /// writeObject().
-  virtual void recordRelocation(MCAssembler &Asm, const MCFragment *Fragment,
-                                const MCFixup &Fixup, MCValue Target,
-                                uint64_t &FixedValue) = 0;
+  virtual void recordRelocation(const MCFragment &F, const MCFixup &Fixup,
+                                MCValue Target, uint64_t &FixedValue);
 
   /// Check whether the difference (A - B) between two symbol references is
   /// fully resolved.
@@ -126,7 +125,7 @@ public:
   /// This routine is called by the assembler after layout and relaxation is
   /// complete, fixups have been evaluated and applied, and relocations
   /// generated.
-  virtual uint64_t writeObject(MCAssembler &Asm) = 0;
+  virtual uint64_t writeObject() = 0;
 
   /// @}
 };

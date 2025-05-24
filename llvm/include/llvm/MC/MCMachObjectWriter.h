@@ -327,9 +327,8 @@ public:
     Relocations[Sec].push_back(P);
   }
 
-  void recordRelocation(MCAssembler &Asm, const MCFragment *Fragment,
-                        const MCFixup &Fixup, MCValue Target,
-                        uint64_t &FixedValue) override;
+  void recordRelocation(const MCFragment &F, const MCFixup &Fixup,
+                        MCValue Target, uint64_t &FixedValue) override;
 
   void bindIndirectSymbols(MCAssembler &Asm);
 
@@ -349,7 +348,7 @@ public:
 
   void populateAddrSigSection(MCAssembler &Asm);
 
-  uint64_t writeObject(MCAssembler &Asm) override;
+  uint64_t writeObject() override;
 };
 } // end namespace llvm
 

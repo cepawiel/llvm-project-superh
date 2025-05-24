@@ -105,8 +105,7 @@ MCFixupKindInfo RISCVAsmBackend::getFixupKindInfo(MCFixupKind Kind) const {
   return Infos[Kind - FirstTargetFixupKind];
 }
 
-bool RISCVAsmBackend::fixupNeedsRelaxationAdvanced(const MCAssembler &,
-                                                   const MCFixup &Fixup,
+bool RISCVAsmBackend::fixupNeedsRelaxationAdvanced(const MCFixup &Fixup,
                                                    const MCValue &,
                                                    uint64_t Value,
                                                    bool Resolved) const {
@@ -649,8 +648,8 @@ bool RISCVAsmBackend::addReloc(const MCFragment &F, const MCFixup &Fixup,
     MCValue B = MCValue::get(Target.getSubSym());
     auto FA = MCFixup::create(Fixup.getOffset(), nullptr, TA);
     auto FB = MCFixup::create(Fixup.getOffset(), nullptr, TB);
-    Asm->getWriter().recordRelocation(*Asm, &F, FA, A, FixedValueA);
-    Asm->getWriter().recordRelocation(*Asm, &F, FB, B, FixedValueB);
+    Asm->getWriter().recordRelocation(F, FA, A, FixedValueA);
+    Asm->getWriter().recordRelocation(F, FB, B, FixedValueB);
     FixedValue = FixedValueA - FixedValueB;
     return false;
   }
@@ -666,7 +665,7 @@ bool RISCVAsmBackend::addReloc(const MCFragment &F, const MCFixup &Fixup,
 
   if (Fixup.isLinkerRelaxable()) {
     auto FA = MCFixup::create(Fixup.getOffset(), nullptr, ELF::R_RISCV_RELAX);
-    Asm->getWriter().recordRelocation(*Asm, &F, FA, MCValue::get(nullptr),
+    Asm->getWriter().recordRelocation(F, FA, MCValue::get(nullptr),
                                       FixedValueA);
   }
 
@@ -750,9 +749,7 @@ bool RISCVAsmBackend::shouldInsertFixupForCodeAlign(MCAssembler &Asm,
 
   uint64_t FixedValue = 0;
   MCValue NopBytes = MCValue::get(Count);
-
-  Asm.getWriter().recordRelocation(Asm, &AF, Fixup, NopBytes, FixedValue);
-
+  Asm.getWriter().recordRelocation(AF, Fixup, NopBytes, FixedValue);
   return true;
 }
 
