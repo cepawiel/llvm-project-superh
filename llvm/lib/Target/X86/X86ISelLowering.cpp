@@ -15101,6 +15101,17 @@ static SDValue splitAndLowerShuffle(const SDLoc &DL, MVT VT, SDValue V1,
   assert(V1.getSimpleValueType() == VT && "Bad operand type!");
   assert(V2.getSimpleValueType() == VT && "Bad operand type!");
 
+  // If this came from the AVX1 v8i32 -> v8f32 bitcast, split using v4i32.
+  if (VT == MVT::v8f32) {
+    SDValue BC1 = peekThroughBitcasts(V1);
+    SDValue BC2 = peekThroughBitcasts(V2);
+    if (BC1.getValueType() == MVT::v8i32 && BC2.getValueType() == MVT::v8i32) {
+      if (SDValue Split = splitAndLowerShuffle(DL, MVT::v8i32, BC1, BC2, Mask,
+                                               DAG, SimpleOnly))
+        return DAG.getBitcast(VT, Split);
+    }
+  }
+
   ArrayRef<int> LoMask = Mask.slice(0, Mask.size() / 2);
   ArrayRef<int> HiMask = Mask.slice(Mask.size() / 2);
 
@@ -18555,7 +18566,9 @@ SDValue X86TargetLowering::LowerVSELECT(SDValue Op, SelectionDAG &DAG) const {
     return SDValue();
 
   case MVT::v8i16:
-  case MVT::v16i16: {
+  case MVT::v16i16:
+  case MVT::v8f16:
+  case MVT::v16f16: {
     // Bitcast everything to the vXi8 type and use a vXi8 vselect.
     MVT CastVT = MVT::getVectorVT(MVT::i8, NumElts * 2);
     Cond = DAG.getBitcast(CastVT, Cond);
@@ -25549,14 +25562,12 @@ static SDValue LowerStore(SDValue Op, const X86Subtarget &Subtarget,
   if (St->isTruncatingStore())
     return SDValue();
 
-  // If this is a 256-bit store of concatenated ops, we are better off splitting
-  // that store into two 128-bit stores. This avoids spurious use of 256-bit ops
-  // and each half can execute independently. Some cores would split the op into
-  // halves anyway, so the concat (vinsertf128) is purely an extra op.
+  // If this is a 256/512-bit store of concatenated ops, we are better off
+  // splitting that store into two half-size stores. This avoids spurious use of
+  // concatenated ops and each half can execute independently. Some cores would
+  // split the op into halves anyway, so the concat is purely an extra op.
   MVT StoreVT = StoredVal.getSimpleValueType();
-  if (StoreVT.is256BitVector() ||
-      ((StoreVT == MVT::v32i16 || StoreVT == MVT::v64i8) &&
-       !Subtarget.hasBWI())) {
+  if (StoreVT.is256BitVector() || StoreVT.is512BitVector()) {
     if (StoredVal.hasOneUse() && isFreeToSplitVector(StoredVal, DAG))
       return splitVectorStore(St, DAG);
     return SDValue();
@@ -47806,6 +47817,7 @@ static SDValue combineSelect(SDNode *N, SelectionDAG &DAG,
        Cond.getOpcode() == ISD::STRICT_FSETCCS) &&
       VT.isFloatingPoint() && VT != MVT::f80 && VT != MVT::f128 &&
       !isSoftF16(VT, Subtarget) && (TLI.isTypeLegal(VT) || VT == MVT::v2f32) &&
+      ((VT != MVT::v8f16 && VT != MVT::v16f16) || Subtarget.hasVLX()) &&
       (Subtarget.hasSSE2() ||
        (Subtarget.hasSSE1() && VT.getScalarType() == MVT::f32))) {
     bool IsStrict = Cond->isStrictFPOpcode();
