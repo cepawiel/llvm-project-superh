@@ -7154,6 +7154,7 @@ SDValue AArch64TargetLowering::LowerINIT_TRAMPOLINE(SDValue Op,
   switch (CC) {
   default:
     NestReg = 0x0f; // X15
+    LLVM_FALLTHROUGH;
   case CallingConv::ARM64EC_Thunk_Native:
   case CallingConv::ARM64EC_Thunk_X64:
     // Must be kept in sync with AArch64CallingConv.td
@@ -29450,6 +29451,30 @@ AArch64TargetLowering::LowerVECTOR_DEINTERLEAVE(SDValue Op,
   assert(OpVT.isScalableVector() &&
          "Expected scalable vector in LowerVECTOR_DEINTERLEAVE.");
 
+  // Are multi-register uzp instructions available?
+  if (Subtarget->hasSME2() && Subtarget->isStreaming() &&
+      OpVT.getVectorElementType() != MVT::i1) {
+    Intrinsic::ID IntID;
+    switch (Op->getNumOperands()) {
+    default:
+      return SDValue();
+    case 2:
+      IntID = Intrinsic::aarch64_sve_uzp_x2;
+      break;
+    case 4:
+      if (Subtarget->getMinSVEVectorSizeInBits() < 256 &&
+          OpVT.getScalarSizeInBits() == 64)
+        return SDValue();
+      IntID = Intrinsic::aarch64_sve_uzp_x4;
+      break;
+    }
+
+    SmallVector<SDValue, 5> Ops;
+    Ops.push_back(DAG.getTargetConstant(IntID, DL, MVT::i64));
+    Ops.append(Op->op_values().begin(), Op->op_values().end());
+    return DAG.getNode(ISD::INTRINSIC_WO_CHAIN, DL, Op->getVTList(), Ops);
+  }
+
   if (Op->getNumOperands() != 2)
     return SDValue();
 
@@ -29466,6 +29491,30 @@ SDValue AArch64TargetLowering::LowerVECTOR_INTERLEAVE(SDValue Op,
   EVT OpVT = Op.getValueType();
   assert(OpVT.isScalableVector() &&
          "Expected scalable vector in LowerVECTOR_INTERLEAVE.");
+
+  // Are multi-register zip instructions available?
+  if (Subtarget->hasSME2() && Subtarget->isStreaming() &&
+      OpVT.getVectorElementType() != MVT::i1) {
+    Intrinsic::ID IntID;
+    switch (Op->getNumOperands()) {
+    default:
+      return SDValue();
+    case 2:
+      IntID = Intrinsic::aarch64_sve_zip_x2;
+      break;
+    case 4:
+      if (Subtarget->getMinSVEVectorSizeInBits() < 256 &&
+          OpVT.getScalarSizeInBits() == 64)
+        return SDValue();
+      IntID = Intrinsic::aarch64_sve_zip_x4;
+      break;
+    }
+
+    SmallVector<SDValue, 5> Ops;
+    Ops.push_back(DAG.getTargetConstant(IntID, DL, MVT::i64));
+    Ops.append(Op->op_values().begin(), Op->op_values().end());
+    return DAG.getNode(ISD::INTRINSIC_WO_CHAIN, DL, Op->getVTList(), Ops);
+  }
 
   if (Op->getNumOperands() != 2)
     return SDValue();
