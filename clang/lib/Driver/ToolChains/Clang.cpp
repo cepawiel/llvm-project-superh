@@ -6803,7 +6803,7 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
 
   Args.AddLastArg(CmdArgs, options::OPT_fms_hotpatch);
 
-  if (Arg *A = Args.getLastArg(options::OPT_fms_secure_hotpatch_functions_file))
+  if (Args.hasArg(options::OPT_fms_secure_hotpatch_functions_file))
     Args.AddLastArg(CmdArgs, options::OPT_fms_secure_hotpatch_functions_file);
 
   for (const auto &A :
