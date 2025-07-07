@@ -625,7 +625,6 @@ def ModuleConflict : DiagGroup<"module-conflict">;
 def ModuleFileExtension : DiagGroup<"module-file-extension">;
 def ModuleIncludeDirectiveTranslation : DiagGroup<"module-include-translation">;
 def ModuleMap : DiagGroup<"module-map">;
-def ModulesDriver : DiagGroup<"modules-driver">;
 def RoundTripCC1Args : DiagGroup<"round-trip-cc1-args">;
 def NewlineEOF : DiagGroup<"newline-eof">;
 def Nullability : DiagGroup<"nullability">;
@@ -1531,9 +1530,11 @@ def OpenMPPre51Compat : DiagGroup<"pre-openmp-51-compat">;
 def OpenMP51Ext : DiagGroup<"openmp-51-extensions">;
 def OpenMPExtensions : DiagGroup<"openmp-extensions">;
 def OpenMPTargetException : DiagGroup<"openmp-target-exception">;
+def OpenMPFuture : DiagGroup<"openmp-future">;
 def OpenMP : DiagGroup<"openmp", [
     SourceUsesOpenMP, OpenMPClauses, OpenMPLoopForm, OpenMPTarget,
-    OpenMPMapping, OpenMP51Ext, OpenMPExtensions, OpenMPTargetException
+    OpenMPMapping, OpenMP51Ext, OpenMPExtensions, OpenMPTargetException,
+    OpenMPFuture
   ]>;
 
 // OpenACC warnings.
