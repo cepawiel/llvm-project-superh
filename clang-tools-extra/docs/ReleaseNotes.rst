@@ -105,6 +105,10 @@ Improvements to clang-tidy
   now run checks in parallel by default using all available hardware threads.
   Both scripts display the number of threads being used in their output.
 
+- Improved :program:`run-clang-tidy.py` by adding a new option
+  `enable-check-profile` to enable per-check timing profiles and print a
+  report based on all analyzed files.
+
 New checks
 ^^^^^^^^^^
 
@@ -129,6 +133,10 @@ Changes in existing checks
 - Improved :doc:`bugprone-infinite-loop
   <clang-tidy/checks/bugprone/infinite-loop>` check by adding detection for
   variables introduced by structured bindings.
+
+- Improved :doc:`bugprone-narrowing-conversions
+  <clang-tidy/checks/bugprone/narrowing-conversions>` check by fixing
+  false positive from analysis of a conditional expression in C.
 
 - Improved :doc:`bugprone-reserved-identifier
   <clang-tidy/checks/bugprone/reserved-identifier>` check by ignoring
