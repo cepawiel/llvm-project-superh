@@ -294,11 +294,9 @@ MCSymbol *MCContext::createSymbolImpl(const MCSymbolTableEntry *Name,
   case MCContext::IsDXContainer:
     break;
   case MCContext::IsSPIRV:
-    return new (Name, *this)
-        MCSymbol(MCSymbol::SymbolKindUnset, Name, IsTemporary);
+    return new (Name, *this) MCSymbol(Name, IsTemporary);
   }
-  return new (Name, *this)
-      MCSymbol(MCSymbol::SymbolKindUnset, Name, IsTemporary);
+  return new (Name, *this) MCSymbol(Name, IsTemporary);
 }
 
 MCSymbol *MCContext::cloneSymbol(MCSymbol &Sym) {
@@ -446,7 +444,7 @@ Symbol *MCContext::getOrCreateSectionSymbol(StringRef Section) {
   // Use the symbol's index to track if it has been used as a section symbol.
   // Set to -1 to catch potential bugs if misused as a symbol index.
   if (Sym && Sym->getIndex() != -1u) {
-    R = cast<Symbol>(Sym);
+    R = static_cast<Symbol *>(Sym);
   } else {
     SymEntry.second.Used = true;
     R = new (&SymEntry, *this) Symbol(&SymEntry, /*isTemporary=*/false);
@@ -586,7 +584,7 @@ MCContext::createELFRelSection(const Twine &Name, unsigned Type, unsigned Flags,
 
   return createELFSectionImpl(
       I->getKey(), Type, Flags, EntrySize, Group, true, true,
-      cast<MCSymbolELF>(RelInfoSection->getBeginSymbol()));
+      static_cast<const MCSymbolELF *>(RelInfoSection->getBeginSymbol()));
 }
 
 MCSectionELF *MCContext::getELFNamedSection(const Twine &Prefix,
@@ -817,7 +815,7 @@ MCSectionWasm *MCContext::getWasmSection(const Twine &Section, SectionKind K,
                                          unsigned UniqueID) {
   MCSymbolWasm *GroupSym = nullptr;
   if (!Group.isTriviallyEmpty() && !Group.str().empty()) {
-    GroupSym = cast<MCSymbolWasm>(getOrCreateSymbol(Group));
+    GroupSym = static_cast<MCSymbolWasm *>(getOrCreateSymbol(Group));
     GroupSym->setComdat(true);
     if (K.isMetadata() && !GroupSym->getType().has_value()) {
       // Comdat group symbol associated with a custom section is a section
@@ -848,7 +846,7 @@ MCSectionWasm *MCContext::getWasmSection(const Twine &Section, SectionKind Kind,
   MCSymbol *Begin = createRenamableSymbol(CachedName, true, false);
   // Begin always has a different name than CachedName... see #48596.
   getSymbolTableEntry(Begin->getName()).second.Symbol = Begin;
-  cast<MCSymbolWasm>(Begin)->setType(wasm::WASM_SYMBOL_TYPE_SECTION);
+  static_cast<MCSymbolWasm *>(Begin)->setType(wasm::WASM_SYMBOL_TYPE_SECTION);
 
   MCSectionWasm *Result = new (WasmAllocator.Allocate())
       MCSectionWasm(CachedName, Kind, Flags, GroupSym, UniqueID, Begin);
@@ -889,9 +887,9 @@ MCSectionXCOFF *MCContext::getXCOFFSection(
   MCSymbolXCOFF *QualName = nullptr;
   // Debug section don't have storage class attribute.
   if (IsDwarfSec)
-    QualName = cast<MCSymbolXCOFF>(getOrCreateSymbol(CachedName));
+    QualName = static_cast<MCSymbolXCOFF *>(getOrCreateSymbol(CachedName));
   else
-    QualName = cast<MCSymbolXCOFF>(getOrCreateSymbol(
+    QualName = static_cast<MCSymbolXCOFF *>(getOrCreateSymbol(
         CachedName + "[" +
         XCOFF::getMappingClassString(CsectProp->MappingClass) + "]"));
 
