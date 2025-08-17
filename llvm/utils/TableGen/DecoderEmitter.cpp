@@ -319,8 +319,8 @@ static raw_ostream &operator<<(raw_ostream &OS, const EncodingAndInst &Value) {
 }
 
 // Prints the bit value for each position.
-static void dumpBits(raw_ostream &OS, const BitsInit &Bits) {
-  for (const Init *Bit : reverse(Bits.getBits()))
+static void dumpBits(raw_ostream &OS, const BitsInit &Bits, unsigned BitWidth) {
+  for (const Init *Bit : reverse(Bits.getBits().take_front(BitWidth)))
     OS << BitValue(Bit);
 }
 
@@ -348,6 +348,24 @@ static const BitsInit &getBitsField(const Record &Def, StringRef FieldName) {
 // Representation of the instruction to work on.
 typedef std::vector<BitValue> insn_t;
 
+/// Extracts a NumBits long field from Insn, starting from StartBit.
+/// Returns the value of the field if all bits are well-known,
+/// otherwise std::nullopt.
+static std::optional<uint64_t>
+fieldFromInsn(const insn_t &Insn, unsigned StartBit, unsigned NumBits) {
+  uint64_t Field = 0;
+
+  for (unsigned BitIndex = 0; BitIndex < NumBits; ++BitIndex) {
+    if (Insn[StartBit + BitIndex] == BitValue::BIT_UNSET)
+      return std::nullopt;
+
+    if (Insn[StartBit + BitIndex] == BitValue::BIT_TRUE)
+      Field = Field | (1ULL << BitIndex);
+  }
+
+  return Field;
+}
+
 namespace {
 
 static constexpr uint64_t NO_FIXED_SEGMENTS_SENTINEL =
@@ -371,16 +389,16 @@ class FilterChooser;
 ///
 /// An example of a conflict is
 ///
-/// Conflict:
-///                     111101000.00........00010000....
-///                     111101000.00........0001........
-///                     1111010...00........0001........
-///                     1111010...00....................
-///                     1111010.........................
-///                     1111............................
-///                     ................................
-///     VST4q8a         111101000_00________00010000____
-///     VST4q8b         111101000_00________00010000____
+/// Decoding Conflict:
+///     ................................
+///     1111............................
+///     1111010.........................
+///     1111010...00....................
+///     1111010...00........0001........
+///     111101000.00........0001........
+///     111101000.00........00010000....
+///     111101000_00________00010000____  VST4q8a
+///     111101000_00________00010000____  VST4q8b
 ///
 /// The Debug output shows the path that the decoding tree follows to reach the
 /// the conclusion that there is a conflict.  VST4q8a is a vst4 to double-spaced
@@ -558,22 +576,13 @@ protected:
     return Insn;
   }
 
-  // Populates the field of the insn given the start position and the number of
-  // consecutive bits to scan for.
-  //
-  // Returns a pair of values (indicator, field), where the indicator is false
-  // if there exists any uninitialized bit value in the range and true if all
-  // bits are well-known. The second value is the potentially populated field.
-  std::pair<bool, uint64_t> fieldFromInsn(const insn_t &Insn, unsigned StartBit,
-                                          unsigned NumBits) const;
-
   /// dumpFilterArray - dumpFilterArray prints out debugging info for the given
   /// filter array as a series of chars.
   void dumpFilterArray(raw_ostream &OS, ArrayRef<BitValue> Filter) const;
 
   /// dumpStack - dumpStack traverses the filter chooser chain and calls
   /// dumpFilterArray on each filter chooser up to the top level one.
-  void dumpStack(raw_ostream &OS, const char *prefix) const;
+  void dumpStack(raw_ostream &OS, indent Indent) const;
 
   bool PositionFiltered(unsigned Idx) const {
     return FilterBitValues[Idx].isSet();
@@ -663,12 +672,12 @@ Filter::Filter(const FilterChooser &owner, unsigned startBit, unsigned numBits)
     insn_t Insn = Owner.insnWithID(OpcPair.EncodingID);
 
     // Scans the segment for possibly well-specified encoding bits.
-    auto [Ok, Field] = Owner.fieldFromInsn(Insn, StartBit, NumBits);
+    std::optional<uint64_t> Field = fieldFromInsn(Insn, StartBit, NumBits);
 
-    if (Ok) {
+    if (Field) {
       // The encoding bits are well-known.  Lets add the uid of the
       // instruction into the bucket keyed off the constant field value.
-      FilteredInstructions[Field].push_back(OpcPair);
+      FilteredInstructions[*Field].push_back(OpcPair);
       ++NumFiltered;
     } else {
       // Some of the encoding bit(s) are unspecified.  This contributes to
@@ -692,9 +701,8 @@ void Filter::recurse() {
   std::vector<BitValue> BitValueArray(Owner.FilterBitValues);
 
   if (!VariableInstructions.empty()) {
-    // Conservatively marks each segment position as BIT_UNSET.
     for (unsigned bitIndex = 0; bitIndex < NumBits; ++bitIndex)
-      BitValueArray[StartBit + bitIndex] = BitValue::BIT_UNSET;
+      BitValueArray[StartBit + bitIndex] = BitValue::BIT_UNFILTERED;
 
     // Delegates to an inferior filter chooser for further processing on this
     // group of instructions whose segment values are variable.
@@ -1099,28 +1107,6 @@ void DecoderEmitter::emitDecoderFunction(formatted_raw_ostream &OS,
   OS << "}\n";
 }
 
-// Populates the field of the insn given the start position and the number of
-// consecutive bits to scan for.
-//
-// Returns a pair of values (indicator, field), where the indicator is false
-// if there exists any uninitialized bit value in the range and true if all
-// bits are well-known. The second value is the potentially populated field.
-std::pair<bool, uint64_t> FilterChooser::fieldFromInsn(const insn_t &Insn,
-                                                       unsigned StartBit,
-                                                       unsigned NumBits) const {
-  uint64_t Field = 0;
-
-  for (unsigned i = 0; i < NumBits; ++i) {
-    if (Insn[StartBit + i] == BitValue::BIT_UNSET)
-      return {false, Field};
-
-    if (Insn[StartBit + i] == BitValue::BIT_TRUE)
-      Field = Field | (1ULL << i);
-  }
-
-  return {true, Field};
-}
-
 /// dumpFilterArray - dumpFilterArray prints out debugging info for the given
 /// filter array as a series of chars.
 void FilterChooser::dumpFilterArray(raw_ostream &OS,
@@ -1131,15 +1117,12 @@ void FilterChooser::dumpFilterArray(raw_ostream &OS,
 
 /// dumpStack - dumpStack traverses the filter chooser chain and calls
 /// dumpFilterArray on each filter chooser up to the top level one.
-void FilterChooser::dumpStack(raw_ostream &OS, const char *prefix) const {
-  const FilterChooser *current = this;
-
-  while (current) {
-    OS << prefix;
-    dumpFilterArray(OS, current->FilterBitValues);
-    OS << '\n';
-    current = current->Parent;
-  }
+void FilterChooser::dumpStack(raw_ostream &OS, indent Indent) const {
+  if (Parent)
+    Parent->dumpStack(OS, Indent);
+  OS << Indent;
+  dumpFilterArray(OS, FilterBitValues);
+  OS << '\n';
 }
 
 // Calculates the island(s) needed to decode the instruction.
@@ -1771,8 +1754,25 @@ void FilterChooser::doFilter() {
       filterProcessor(BitAttrs, /*AllowMixed=*/true, /*Greedy=*/false))
     return;
 
-  // If we come to here, the instruction decoding has failed.
+  // We don't know how to decode these instructions! Dump the
+  // conflict set and bail.
   assert(!BestFilter);
+
+  // Print out useful conflict information for postmortem analysis.
+  errs() << "Decoding Conflict:\n";
+
+  // Dump filters.
+  indent Indent(4);
+  dumpStack(errs(), Indent);
+
+  // Dump encodings.
+  for (EncodingIDAndOpcode Opcode : Opcodes) {
+    const EncodingAndInst &Enc = AllInstructions[Opcode.EncodingID];
+    errs() << Indent;
+    dumpBits(errs(), getBitsField(*Enc.EncodingDef, "Inst"), BitWidth);
+    errs() << "  " << Enc << '\n';
+  }
+  PrintFatalError("Decoding conflict encountered");
 }
 
 // emitTableEntries - Emit state machine entries to decode our share of
@@ -1786,30 +1786,11 @@ void FilterChooser::emitTableEntries(DecoderTableInfo &TableInfo) const {
     return;
   }
 
-  // Choose the best filter to do the decodings!
-  if (BestFilter) {
-    if (BestFilter->getNumFiltered() == 1)
-      emitSingletonTableEntry(TableInfo, *BestFilter);
-    else
-      BestFilter->emitTableEntry(TableInfo);
-    return;
-  }
-
-  // We don't know how to decode these instructions! Dump the
-  // conflict set and bail.
-
-  // Print out useful conflict information for postmortem analysis.
-  errs() << "Decoding Conflict:\n";
-
-  dumpStack(errs(), "\t\t");
-
-  for (auto Opcode : Opcodes) {
-    const EncodingAndInst &Enc = AllInstructions[Opcode.EncodingID];
-    errs() << '\t' << Enc << ' ';
-    dumpBits(errs(), getBitsField(*Enc.EncodingDef, "Inst"));
-    errs() << '\n';
-  }
-  PrintFatalError("Decoding conflict encountered");
+  // Use the best filter to do the decoding!
+  if (BestFilter->getNumFiltered() == 1)
+    emitSingletonTableEntry(TableInfo, *BestFilter);
+  else
+    BestFilter->emitTableEntry(TableInfo);
 }
 
 static std::string findOperandDecoderMethod(const Record *Record) {
