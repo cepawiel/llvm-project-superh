@@ -428,10 +428,7 @@ protected:
   std::unique_ptr<const FilterChooser> VariableFC;
 
 public:
-  Filter(Filter &&f);
   Filter(const FilterChooser &owner, unsigned startBit, unsigned numBits);
-
-  ~Filter() = default;
 
   bool hasSingleFilteredID() const {
     return FilteredIDs.size() == 1 && FilteredIDs.begin()->second.size() == 1;
@@ -612,19 +609,19 @@ protected:
   void emitDecoder(raw_ostream &OS, indent Indent, unsigned EncodingID) const;
   unsigned getDecoderIndex(DecoderSet &Decoders, unsigned EncodingID) const;
 
-  // Assign a single filter and run with it.
-  void runSingleFilter(unsigned startBit, unsigned numBit);
-
   // reportRegion is a helper function for filterProcessor to mark a region as
   // eligible for use as a filter region.
   void reportRegion(std::vector<std::unique_ptr<Filter>> &Filters, bitAttr_t RA,
-                    unsigned StartBit, unsigned BitIndex, bool AllowMixed);
+                    unsigned StartBit, unsigned BitIndex,
+                    bool AllowMixed) const;
 
-  // FilterProcessor scans the well-known encoding bits of the instructions and
-  // builds up a list of candidate filters.  It chooses the best filter and
-  // recursively descends down the decoding tree.
-  bool filterProcessor(ArrayRef<bitAttr_t> BitAttrs, bool AllowMixed,
-                       bool Greedy = true);
+  /// Scans the well-known encoding bits of the encodings and, builds up a list
+  /// of candidate filters, and then returns the best one, if any.
+  std::unique_ptr<Filter> findBestFilter(ArrayRef<bitAttr_t> BitAttrs,
+                                         bool AllowMixed,
+                                         bool Greedy = true) const;
+
+  std::unique_ptr<Filter> findBestFilter() const;
 
   // Decides on the best configuration of filter(s) to use in order to decode
   // the instructions.  A conflict of instructions may occur, in which case we
@@ -635,6 +632,8 @@ public:
   // emitTableEntries - Emit state machine entries to decode our share of
   // instructions.
   void emitTableEntries(DecoderTableInfo &TableInfo) const;
+
+  void dump() const;
 };
 
 } // end anonymous namespace
@@ -644,13 +643,6 @@ public:
 // Filter Implementation //
 //                       //
 ///////////////////////////
-
-Filter::Filter(Filter &&f)
-    : Owner(f.Owner), StartBit(f.StartBit), NumBits(f.NumBits),
-      FilteredIDs(std::move(f.FilteredIDs)),
-      VariableIDs(std::move(f.VariableIDs)),
-      FilterChooserMap(std::move(f.FilterChooserMap)),
-      VariableFC(std::move(f.VariableFC)) {}
 
 Filter::Filter(const FilterChooser &owner, unsigned startBit, unsigned numBits)
     : Owner(owner), StartBit(startBit), NumBits(numBits) {
@@ -685,15 +677,13 @@ Filter::Filter(const FilterChooser &owner, unsigned startBit, unsigned numBits)
 // instructions.  In order to unambiguously decode the singleton, we need to
 // match the remaining undecoded encoding bits against the singleton.
 void Filter::recurse() {
-  // Starts by inheriting our parent filter chooser's filter bit values.
-  KnownBits FilterBits = Owner.FilterBits;
-  assert(FilterBits.extractBits(NumBits, StartBit).isUnknown());
+  assert(Owner.FilterBits.extractBits(NumBits, StartBit).isUnknown());
 
   if (!VariableIDs.empty()) {
     // Delegates to an inferior filter chooser for further processing on this
     // group of instructions whose segment values are variable.
     VariableFC = std::make_unique<FilterChooser>(Owner.Encodings, VariableIDs,
-                                                 FilterBits, Owner);
+                                                 Owner.FilterBits, Owner);
   }
 
   // No need to recurse for a singleton filtered instruction.
@@ -704,16 +694,18 @@ void Filter::recurse() {
   }
 
   // Otherwise, create sub choosers.
-  for (const auto &[FilterVal, EncodingIDs] : FilteredIDs) {
+  for (const auto &[FilterVal, InferiorEncodingIDs] : FilteredIDs) {
     // Create a new filter by inserting the field bits into the parent filter.
     APInt FieldBits(NumBits, FilterVal);
-    FilterBits.insertBits(KnownBits::makeConstant(FieldBits), StartBit);
+    KnownBits InferiorFilterBits = Owner.FilterBits;
+    InferiorFilterBits.insertBits(KnownBits::makeConstant(FieldBits), StartBit);
 
     // Delegates to an inferior filter chooser for further processing on this
     // category of instructions.
     FilterChooserMap.try_emplace(
-        FilterVal, std::make_unique<FilterChooser>(Owner.Encodings, EncodingIDs,
-                                                   FilterBits, Owner));
+        FilterVal,
+        std::make_unique<FilterChooser>(Owner.Encodings, InferiorEncodingIDs,
+                                        InferiorFilterBits, Owner));
   }
 }
 
@@ -1394,15 +1386,14 @@ void FilterChooser::emitSingletonTableEntry(DecoderTableInfo &TableInfo,
 
   // Check any additional encoding fields needed.
   for (const Island &Ilnd : reverse(Islands)) {
-    unsigned NumBits = Ilnd.NumBits;
-    assert(isUInt<8>(NumBits) && "NumBits overflowed uint8 table entry!");
+    assert(isUInt<8>(Ilnd.NumBits) && "NumBits overflowed uint8 table entry!");
     const uint8_t DecoderOp = TableInfo.isOutermostScope()
                                   ? MCD::OPC_CheckFieldOrFail
                                   : MCD::OPC_CheckField;
     TableInfo.Table.push_back(DecoderOp);
 
     TableInfo.Table.insertULEB128(Ilnd.StartBit);
-    TableInfo.Table.push_back(NumBits);
+    TableInfo.Table.push_back(Ilnd.NumBits);
     TableInfo.Table.insertULEB128(Ilnd.FieldVal);
 
     if (DecoderOp == MCD::OPC_CheckField) {
@@ -1456,28 +1447,19 @@ void FilterChooser::emitSingletonTableEntry(DecoderTableInfo &TableInfo,
   Best.getVariableFC().emitTableEntries(TableInfo);
 }
 
-// Assign a single filter and run with it.  Top level API client can initialize
-// with a single filter to start the filtering process.
-void FilterChooser::runSingleFilter(unsigned startBit, unsigned numBit) {
-  BestFilter = std::make_unique<Filter>(*this, startBit, numBit);
-  BestFilter->recurse();
-}
-
 // reportRegion is a helper function for filterProcessor to mark a region as
 // eligible for use as a filter region.
 void FilterChooser::reportRegion(std::vector<std::unique_ptr<Filter>> &Filters,
                                  bitAttr_t RA, unsigned StartBit,
-                                 unsigned BitIndex, bool AllowMixed) {
+                                 unsigned BitIndex, bool AllowMixed) const {
   if (AllowMixed ? RA == ATTR_MIXED : RA == ATTR_ALL_SET)
     Filters.push_back(
         std::make_unique<Filter>(*this, StartBit, BitIndex - StartBit));
 }
 
-// FilterProcessor scans the well-known encoding bits of the instructions and
-// builds up a list of candidate filters.  It chooses the best filter and
-// recursively descends down the decoding tree.
-bool FilterChooser::filterProcessor(ArrayRef<bitAttr_t> BitAttrs,
-                                    bool AllowMixed, bool Greedy) {
+std::unique_ptr<Filter>
+FilterChooser::findBestFilter(ArrayRef<bitAttr_t> BitAttrs, bool AllowMixed,
+                              bool Greedy) const {
   assert(EncodingIDs.size() >= 2 && "Nothing to filter");
 
   // Heuristics.  See also doFilter()'s "Heuristics" comment when num of
@@ -1493,8 +1475,8 @@ bool FilterChooser::filterProcessor(ArrayRef<bitAttr_t> BitAttrs,
       std::vector<Island> Islands = getIslands(EncodingBits);
       if (!Islands.empty()) {
         // Found an instruction with island(s).  Now just assign a filter.
-        runSingleFilter(Islands[0].StartBit, Islands[0].NumBits);
-        return true;
+        return std::make_unique<Filter>(*this, Islands[0].StartBit,
+                                        Islands[0].NumBits);
       }
     }
   }
@@ -1633,24 +1615,12 @@ bool FilterChooser::filterProcessor(ArrayRef<bitAttr_t> BitAttrs,
   }
 
   if (AllUseless)
-    return false;
+    return nullptr;
 
-  BestFilter = std::move(Filters[BestIndex]);
-  BestFilter->recurse();
-  return true;
+  return std::move(Filters[BestIndex]);
+}
 
-} // end of FilterChooser::filterProcessor(bool)
-
-// Decides on the best configuration of filter(s) to use in order to decode
-// the instructions.  A conflict of instructions may occur, in which case we
-// dump the conflict set to the standard error.
-void FilterChooser::doFilter() {
-  assert(!EncodingIDs.empty() && "FilterChooser created with no instructions");
-
-  // No filter needed.
-  if (EncodingIDs.size() < 2)
-    return;
-
+std::unique_ptr<Filter> FilterChooser::findBestFilter() const {
   // We maintain BIT_WIDTH copies of the bitAttrs automaton.
   // The automaton consumes the corresponding bit from each
   // instruction.
@@ -1706,32 +1676,56 @@ void FilterChooser::doFilter() {
   }
 
   // Try regions of consecutive known bit values first.
-  if (filterProcessor(BitAttrs, /*AllowMixed=*/false))
-    return;
+  if (std::unique_ptr<Filter> F =
+          findBestFilter(BitAttrs, /*AllowMixed=*/false))
+    return F;
 
   // Then regions of mixed bits (both known and unitialized bit values allowed).
-  if (filterProcessor(BitAttrs, /*AllowMixed=*/true))
-    return;
+  if (std::unique_ptr<Filter> F = findBestFilter(BitAttrs, /*AllowMixed=*/true))
+    return F;
 
   // Heuristics to cope with conflict set {t2CMPrs, t2SUBSrr, t2SUBSrs} where
   // no single instruction for the maximum ATTR_MIXED region Inst{14-4} has a
   // well-known encoding pattern.  In such case, we backtrack and scan for the
   // the very first consecutive ATTR_ALL_SET region and assign a filter to it.
-  if (EncodingIDs.size() == 3 &&
-      filterProcessor(BitAttrs, /*AllowMixed=*/true, /*Greedy=*/false))
+  if (EncodingIDs.size() == 3) {
+    if (std::unique_ptr<Filter> F =
+            findBestFilter(BitAttrs, /*AllowMixed=*/true, /*Greedy=*/false))
+      return F;
+  }
+
+  // There is a conflict we could not resolve.
+  return nullptr;
+}
+
+// Decides on the best configuration of filter(s) to use in order to decode
+// the instructions.  A conflict of instructions may occur, in which case we
+// dump the conflict set to the standard error.
+void FilterChooser::doFilter() {
+  assert(!EncodingIDs.empty() && "FilterChooser created with no instructions");
+
+  // No filter needed.
+  if (EncodingIDs.size() < 2)
     return;
 
-  // We don't know how to decode these instructions! Dump the
-  // conflict set and bail.
-  assert(!BestFilter);
+  BestFilter = findBestFilter();
+  if (BestFilter) {
+    BestFilter->recurse();
+    return;
+  }
 
   // Print out useful conflict information for postmortem analysis.
   errs() << "Decoding Conflict:\n";
+  dump();
+  PrintFatalError("Decoding conflict encountered");
+}
 
-  // Dump filters.
+void FilterChooser::dump() const {
   indent Indent(4);
   // Helps to keep the output right-justified.
   unsigned PadToWidth = getMaxEncodingWidth();
+
+  // Dump filter stack.
   dumpStack(errs(), Indent, PadToWidth);
 
   // Dump encodings.
@@ -1741,7 +1735,6 @@ void FilterChooser::doFilter() {
     printKnownBits(errs(), Encoding.getMandatoryBits(), '_');
     errs() << "  " << Encoding.getName() << '\n';
   }
-  PrintFatalError("Decoding conflict encountered");
 }
 
 // emitTableEntries - Emit state machine entries to decode our share of
@@ -2501,7 +2494,9 @@ void DecoderEmitter::parseInstructionEncodings() {
       ++NumEncodingsOmitted;
       continue;
     }
+    unsigned EncodingID = Encodings.size();
     Encodings.emplace_back(EncodingDef, &Target.getInstruction(InstDef));
+    EncodingIDsByHwMode[DefaultMode].push_back(EncodingID);
   }
 
   // Do some statistics.
