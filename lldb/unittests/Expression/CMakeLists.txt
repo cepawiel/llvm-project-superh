@@ -1,3 +1,8 @@
+if ("AArch64" IN_LIST LLVM_TARGETS_TO_BUILD)
+  set(LINK_COMPONENTS_AARCH AArch64)
+  set(LINK_LIBS_AARCH lldbPluginABIAArch64)
+endif()
+
 add_lldb_unittest(ExpressionTests
   ClangParserTest.cpp
   ClangExpressionDeclMapTest.cpp
@@ -7,19 +12,23 @@ add_lldb_unittest(ExpressionTests
   ExpressionTest.cpp
 
   LINK_COMPONENTS
-    AArch64
     Support
+    ${LINK_COMPONENTS_AARCH}
   LINK_LIBS
     lldbCore
     lldbPluginObjectFileELF
     lldbPluginObjectFileWasm
     lldbPluginSymbolVendorWasm
     lldbPluginPlatformLinux
-    lldbPluginABIAArch64
     lldbPluginExpressionParserClang
     lldbPluginTypeSystemClang
     lldbUtility
     lldbUtilityHelpers
     lldbSymbolHelpers
     LLVMTestingSupport
+    ${LINK_LIBS_AARCH}
   )
+
+if ("AArch64" IN_LIST LLVM_TARGETS_TO_BUILD)
+  target_compile_definitions(ExpressionTests PRIVATE ARCH_AARCH64)
+endif()

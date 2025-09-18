@@ -7,7 +7,9 @@
 //===----------------------------------------------------------------------===//
 
 #include "lldb/Expression/DWARFExpression.h"
+#ifdef ARCH_AARCH64
 #include "Plugins/ABI/AArch64/ABISysV_arm64.h"
+#endif
 #include "Plugins/ObjectFile/wasm/ObjectFileWasm.h"
 #include "Plugins/Platform/Linux/PlatformLinux.h"
 #include "Plugins/SymbolFile/DWARF/DWARFDebugInfo.h"
@@ -193,16 +195,12 @@ public:
   void SetUp() override {
     FileSystem::Initialize();
     HostInfo::Initialize();
-    LLVMInitializeAArch64TargetInfo();
-    LLVMInitializeAArch64TargetMC();
     platform_linux::PlatformLinux::Initialize();
-    ABISysV_arm64::Initialize();
   }
   void TearDown() override {
     platform_linux::PlatformLinux::Terminate();
     HostInfo::Terminate();
     FileSystem::Terminate();
-    ABISysV_arm64::Terminate();
   }
 };
 
@@ -1190,12 +1188,31 @@ struct MockProcessWithMemRead : Process {
   bool DoUpdateThreadList(ThreadList &, ThreadList &) override { return false; }
 };
 
+class DWARFExpressionMockProcessTestWithAArch
+    : public DWARFExpressionMockProcessTest {
+public:
+  void SetUp() override {
+    DWARFExpressionMockProcessTest::SetUp();
+#ifdef ARCH_AARCH64
+    LLVMInitializeAArch64TargetInfo();
+    LLVMInitializeAArch64TargetMC();
+    ABISysV_arm64::Initialize();
+#endif
+  }
+  void TearDown() override {
+    DWARFExpressionMockProcessTest::TearDown();
+#ifdef ARCH_AARCH64
+    ABISysV_arm64::Terminate();
+#endif
+  }
+};
+
 /// Sets the value of register x22 to "42".
 /// Creates a process whose memory address 42 contains the value
 ///   memory[42] = ((0xffULL) << 56) | 0xabcdef;
 /// The expression DW_OP_breg22, 0, DW_OP_deref should produce that same value,
 /// without clearing the top byte 0xff.
-TEST_F(DWARFExpressionMockProcessTest, DW_op_deref_no_ptr_fixing) {
+TEST_F(DWARFExpressionMockProcessTestWithAArch, DW_op_deref_no_ptr_fixing) {
   llvm::DenseMap<lldb::addr_t, lldb::addr_t> memory;
   constexpr lldb::addr_t expected_value = ((0xffULL) << 56) | 0xabcdefULL;
   constexpr lldb::addr_t addr = 42;
