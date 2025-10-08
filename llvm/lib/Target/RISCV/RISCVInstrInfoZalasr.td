@@ -45,7 +45,7 @@ multiclass SRL_r_aq_rl<bits<3> funct3, string opcodestr> {
 // Instructions
 //===----------------------------------------------------------------------===//
 
-let Predicates = [HasStdExtZalasr] in {
+let Predicates = [HasStdExtZalasr], IsSignExtendingOpW = 1 in {
 defm LB : LAQ_r_aq_rl<0b000, "lb">;
 defm LH : LAQ_r_aq_rl<0b001, "lh">;
 defm LW : LAQ_r_aq_rl<0b010, "lw">;
@@ -94,11 +94,12 @@ let Predicates = [HasStdExtZalasr] in {
 
   def : PatSRL<releasing_store<atomic_store_32>, SW_RL>;
   def : PatSRL<seq_cst_store<atomic_store_32>, SW_RL>;
+}
 
-  // Used by GISel for RV32 and RV64.
+let Predicates = [HasStdExtZalasr, IsRV32] in {
   def : PatLAQ<acquiring_load<atomic_load_nonext_32>, LW_AQ, i32>;
   def : PatLAQ<seq_cst_load<atomic_load_nonext_32>, LW_AQ, i32>;
-} // Predicates = [HasStdExtZalasr]
+} // Predicates = [HasStdExtZalasr, IsRV32]
 
 let Predicates = [HasStdExtZalasr, IsRV64] in {
   def : PatLAQ<acquiring_load<atomic_load_asext_32>, LW_AQ, i64>;
