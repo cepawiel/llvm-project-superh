@@ -350,8 +350,6 @@ def HasBTIE          : Predicate<"Subtarget->hasBTIE()">,
                                  AssemblerPredicateWithAll<(all_of FeatureBTIE), "btie">;
 def HasMTE           : Predicate<"Subtarget->hasMTE()">,
                                  AssemblerPredicateWithAll<(all_of FeatureMTE), "mte">;
-def HasTME           : Predicate<"Subtarget->hasTME()">,
-                                 AssemblerPredicateWithAll<(all_of FeatureTME), "tme">;
 def HasETE           : Predicate<"Subtarget->hasETE()">,
                                  AssemblerPredicateWithAll<(all_of FeatureETE), "ete">;
 def HasTRBE          : Predicate<"Subtarget->hasTRBE()">,
@@ -1042,11 +1040,11 @@ def AArch64uitof: SDNode<"AArch64ISD::UITOF", SDT_AArch64ITOF>;
 // offset of a variable into X0, using the TLSDesc model.
 def AArch64tlsdesc_callseq : SDNode<"AArch64ISD::TLSDESC_CALLSEQ",
                                     SDT_AArch64TLSDescCallSeq,
-                                    [SDNPOutGlue, SDNPHasChain, SDNPVariadic]>;
+                                    [SDNPOutGlue, SDNPOptInGlue, SDNPHasChain, SDNPVariadic]>;
 
 def AArch64tlsdesc_auth_callseq : SDNode<"AArch64ISD::TLSDESC_AUTH_CALLSEQ",
                                     SDT_AArch64TLSDescCallSeq,
-                                    [SDNPOutGlue, SDNPHasChain, SDNPVariadic]>;
+                                    [SDNPOutGlue, SDNPOptInGlue, SDNPHasChain, SDNPVariadic]>;
 
 def AArch64WrapperLarge : SDNode<"AArch64ISD::WrapperLarge",
                                  SDT_AArch64WrapperLarge>;
@@ -2496,22 +2494,6 @@ def : InstAlias<"sys $op1, $Cn, $Cm, $op2",
                 (SYSxt imm0_7:$op1, sys_cr_op:$Cn,
                  sys_cr_op:$Cm, imm0_7:$op2, XZR)>;
 
-
-let Predicates = [HasTME] in {
-
-def TSTART : TMSystemI<0b0000, "tstart",
-                      [(set GPR64:$Rt, (int_aarch64_tstart))]>;
-
-def TCOMMIT : TMSystemINoOperand<0b0000, "tcommit", [(int_aarch64_tcommit)]>;
-
-def TCANCEL : TMSystemException<0b011, "tcancel",
-                                [(int_aarch64_tcancel timm64_0_65535:$imm)]>;
-
-def TTEST : TMSystemI<0b0001, "ttest", [(set GPR64:$Rt, (int_aarch64_ttest))]> {
-  let mayLoad = 0;
-  let mayStore = 0;
-}
-} // HasTME
 
 //===----------------------------------------------------------------------===//
 // Move immediate instructions.
