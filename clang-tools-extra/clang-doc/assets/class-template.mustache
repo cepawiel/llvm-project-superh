@@ -7,40 +7,9 @@
 }}
 <!DOCTYPE html>
 <html lang="en-US">
-<head>
-    <meta charset="utf-8"/>
-    <title>{{Name}}</title>
-    {{#Stylesheets}}
-    <link rel="stylesheet" type="text/css" href="{{.}}"/>
-    {{/Stylesheets}}
-    {{#Scripts}}
-    <script src="{{.}}"></script>
-    {{/Scripts}}
-    {{! Highlight.js dependency for syntax highlighting }}
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/default.min.css">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/cpp.min.js"></script>
-</head>
+{{>HeadPartial}}
 <body>
-    <nav class="navbar">
-        <div class="navbar__container">
-            {{#ProjectName}}
-            <div class="navbar__logo">
-                {{ProjectName}}
-            </div>
-            {{/ProjectName}}
-            <div class="navbar__menu">
-                <ul class="navbar__links">
-                    <li class="navbar__item">
-                        <a href="/" class="navbar__link">Namespace</a>
-                    </li>
-                    <li class="navbar__item">
-                        <a href="/" class="navbar__link">Class</a>
-                    </li>
-                </ul>
-            </div>
-        </div>
-    </nav>
+    {{>NavbarPartial}}
     <main>
         <div class="container">
             <div class="sidebar">
@@ -154,7 +123,7 @@
                     <div>
                         {{#PublicMembers}}
                         <div id="{{Name}}" class="delimiter-container">
-                            <pre><code class="language-cpp code-clang-doc" >{{Type}} {{Name}}</code></pre>
+                            <pre><code class="language-cpp code-clang-doc" >{{#IsStatic}}static {{/IsStatic}}{{Type}} {{Name}}</code></pre>
                             {{#MemberComments}}
                             <div>
                                 {{>Comments}}
@@ -171,7 +140,7 @@
                     <div>
                         {{#Obj}}
                         <div id="{{Name}}" class="delimiter-container">
-                            <pre><code class="language-cpp code-clang-doc" >{{Type}} {{Name}}</code></pre>
+                            <pre><code class="language-cpp code-clang-doc" >{{#IsStatic}}static {{/IsStatic}}{{Type}} {{Name}}</code></pre>
                             {{#MemberComments}}
                             <div>
                                 {{>Comments}}
