@@ -255,6 +255,17 @@ struct KnownFPClass {
     return Known;
   }
 
+  /// Report known values for fma
+  LLVM_ABI static KnownFPClass
+  fma(const KnownFPClass &LHS, const KnownFPClass &RHS,
+      const KnownFPClass &Addend,
+      DenormalMode Mode = DenormalMode::getDynamic());
+
+  /// Report known values for fma squared, squared, addend
+  LLVM_ABI static KnownFPClass
+  fma_square(const KnownFPClass &Squared, const KnownFPClass &Addend,
+             DenormalMode Mode = DenormalMode::getDynamic());
+
   /// Report known values for exp, exp2 and exp10.
   LLVM_ABI static KnownFPClass exp(const KnownFPClass &Src);
 
@@ -346,6 +357,10 @@ struct KnownFPClass {
   static LLVM_ABI KnownFPClass roundToIntegral(const KnownFPClass &Src,
                                                bool IsTrunc,
                                                bool IsMultiUnitFPType);
+
+  /// Propagate known class for mantissa component of frexp
+  static LLVM_ABI KnownFPClass frexp_mant(
+      const KnownFPClass &Src, DenormalMode Mode = DenormalMode::getDynamic());
 
   void resetAll() { *this = KnownFPClass(); }
 };

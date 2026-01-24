@@ -2014,13 +2014,13 @@ static Constant *getFPClassConstant(Type *Ty, FPClassTest Mask,
   if (Mask == fcPosZero)
     return Constant::getNullValue(Ty);
 
-  // Turn any possible snans into quiet if we can.
-  if (Mask == fcNan && IsCanonicalizing)
-    return ConstantFP::getQNaN(Ty);
-
   // TODO: Support aggregate types that are allowed by FPMathOperator.
   if (Ty->isAggregateType())
     return nullptr;
+
+  // Turn any possible snans into quiet if we can.
+  if (Mask == fcNan && IsCanonicalizing)
+    return ConstantFP::getQNaN(Ty);
 
   switch (Mask) {
   case fcNegZero:
@@ -2029,6 +2029,9 @@ static Constant *getFPClassConstant(Type *Ty, FPClassTest Mask,
     return ConstantFP::getInfinity(Ty);
   case fcNegInf:
     return ConstantFP::getInfinity(Ty, true);
+  case fcQNan:
+    // Payload bits cannot be dropped for pure signbit operations.
+    return IsCanonicalizing ? ConstantFP::getQNaN(Ty) : nullptr;
   default:
     return nullptr;
   }
@@ -3019,6 +3022,53 @@ Value *InstCombinerImpl::SimplifyDemandedUseFPClass(Instruction *I,
     // and splats.
     Known = KnownLHS | KnownRHS;
     break;
+  }
+  case Instruction::ExtractValue: {
+    Value *ExtractSrc;
+    if (match(I, m_ExtractValue<0>(m_OneUse(m_Value(ExtractSrc))))) {
+      if (auto *II = dyn_cast<IntrinsicInst>(ExtractSrc)) {
+        const Intrinsic::ID IID = II->getIntrinsicID();
+        switch (IID) {
+        case Intrinsic::frexp: {
+          FPClassTest SrcDemandedMask = fcNone;
+          if (DemandedMask & fcNan)
+            SrcDemandedMask |= fcNan;
+          if (DemandedMask & fcNegFinite)
+            SrcDemandedMask |= fcNegFinite;
+          if (DemandedMask & fcPosFinite)
+            SrcDemandedMask |= fcPosFinite;
+          if (DemandedMask & fcPosInf)
+            SrcDemandedMask |= fcPosInf;
+          if (DemandedMask & fcNegInf)
+            SrcDemandedMask |= fcNegInf;
+
+          KnownFPClass KnownSrc;
+          if (SimplifyDemandedFPClass(II, 0, SrcDemandedMask, KnownSrc,
+                                      Depth + 1))
+            return I;
+
+          Type *EltTy = VTy->getScalarType();
+          DenormalMode Mode = F.getDenormalMode(EltTy->getFltSemantics());
+
+          Known = KnownFPClass::frexp_mant(KnownSrc, Mode);
+          Known.KnownFPClasses &= DemandedMask;
+
+          if (Constant *SingleVal =
+                  getFPClassConstant(VTy, Known.KnownFPClasses,
+                                     /*IsCanonicalizing=*/true))
+            return SingleVal;
+
+          if (Known.isKnownAlways(fcInf | fcNan))
+            return II->getArgOperand(0);
+
+          return nullptr;
+        }
+        default:
+          break;
+        }
+      }
+    }
+    [[fallthrough]];
   }
   default:
     Known = computeKnownFPClass(I, DemandedMask, CxtI, Depth + 1);
