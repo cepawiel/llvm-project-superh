@@ -1882,6 +1882,8 @@ X86TargetLowering::X86TargetLowering(const X86TargetMachine &TM,
     setOperationAction(ISD::AND, MVT::i512, Custom);
     setOperationAction(ISD::OR, MVT::i512, Custom);
     setOperationAction(ISD::XOR, MVT::i512, Custom);
+    setOperationAction(ISD::ADD, MVT::i512, Custom);
+    setOperationAction(ISD::SUB, MVT::i512, Custom);
 
     for (MVT VT : { MVT::v16i1, MVT::v16i8 }) {
       setOperationPromotedToType(ISD::FP_TO_SINT       , VT, MVT::v16i32);
@@ -2915,8 +2917,14 @@ static bool mayFoldIntoVector(SDValue Op, const X86Subtarget &Subtarget,
   if (isa<ConstantSDNode>(Op) || isa<ConstantFPSDNode>(Op))
     return true;
   EVT VT = Op.getValueType();
-  if (ISD::isBitwiseLogicOp(Op.getOpcode()) &&
-      (VT == MVT::i128 || VT == MVT::i256 || VT == MVT::i512))
+  // TODO : might have better handling by using
+  // `TargetLowering::LegalizeAction::Custom`
+  unsigned Opcode = Op.getOpcode();
+  bool BitwiseCase = (ISD::isBitwiseLogicOp(Opcode) &&
+                      (VT == MVT::i128 || VT == MVT::i256 || VT == MVT::i512));
+  bool AddSubCase =
+      ((Opcode == ISD::ADD || Opcode == ISD::SUB) && (VT == MVT::i512));
+  if (BitwiseCase || AddSubCase)
     return mayFoldIntoVector(Op.getOperand(0), Subtarget) &&
            mayFoldIntoVector(Op.getOperand(1), Subtarget);
   return X86::mayFoldLoad(Op, Subtarget, AssumeSingleUse,
@@ -34259,6 +34267,69 @@ void X86TargetLowering::ReplaceNodeResults(SDNode *N,
     Results.push_back(DAG.getBitcast(VT, Op));
     return;
   }
+  case ISD::ADD:
+  case ISD::SUB: {
+    // TODO: ISD::UADDO_CARRY
+    SDValue LHS = N->getOperand(0);
+    SDValue RHS = N->getOperand(1);
+    EVT VT = N->getValueType(0);
+    bool IsAdd = Opc == ISD::ADD;
+    assert(Subtarget.useAVX512Regs() && "AVX512 required");
+    assert(VT == MVT::i512 && "Unexpected VT!");
+
+    if (!mayFoldIntoVector(LHS, Subtarget) ||
+        !mayFoldIntoVector(RHS, Subtarget))
+      return;
+
+    MVT VecVT = MVT::v8i64;
+    MVT BoolVT = MVT::v8i1;
+
+    if (isOneConstant(RHS)) {
+      RHS = DAG.getAllOnesConstant(dl, VecVT);
+      ;
+      Opc = (IsAdd ? ISD::SUB : ISD::ADD);
+      IsAdd = !IsAdd;
+      // LHS + 1 => LHS - (- 1 , LHS - 1 => LHS + (- 1)
+      // we utilize var `AllOnes` to do less work, this optimization makes snese
+      // since inc/dec operations are common :)
+    }
+
+    SDValue Vec0 = DAG.getBitcast(VecVT, LHS);
+    SDValue Vec1 = DAG.getBitcast(VecVT, RHS);
+
+    SDValue Partial = DAG.getNode(Opc, dl, VecVT, Vec0, Vec1);
+
+    ISD::CondCode CarryCC = IsAdd ? ISD::SETULT : ISD::SETUGT;
+    SDValue Carry = DAG.getSetCC(dl, BoolVT, Partial, Vec0, CarryCC);
+
+    SDValue PropCmp = IsAdd ? DAG.getAllOnesConstant(dl, VecVT)
+                            : DAG.getConstant(0, dl, VecVT);
+    SDValue Propagate = DAG.getSetCC(dl, BoolVT, Partial, PropCmp, ISD::SETEQ);
+
+    SDValue CarryIn = DAG.getBitcast(MVT::i8, Carry);
+    SDValue PropIn = DAG.getBitcast(MVT::i8, Propagate);
+    CarryIn = DAG.getNode(ISD::ZERO_EXTEND, dl, MVT::i32, CarryIn);
+    PropIn = DAG.getNode(ISD::ZERO_EXTEND, dl, MVT::i32, PropIn);
+
+    SDValue ShiftedCarry =
+        DAG.getNode(ISD::SHL, dl, MVT::i32, CarryIn,
+                    DAG.getShiftAmountConstant(1, MVT::i8, dl));
+    SDValue CarryOut =
+        DAG.getNode(ISD::ADD, dl, MVT::i32, ShiftedCarry, PropIn);
+
+    SDValue CorrMask = DAG.getNode(ISD::XOR, dl, MVT::i32, PropIn, CarryOut);
+    CorrMask = DAG.getNode(ISD::TRUNCATE, dl, MVT::i8, CorrMask);
+    SDValue CorrVec = DAG.getBitcast(BoolVT, CorrMask);
+
+    unsigned AdjustOpc = IsAdd ? ISD::SUB : ISD::ADD;
+    SDValue Adjusted = DAG.getNode(AdjustOpc, dl, VecVT, Partial,
+                                   DAG.getAllOnesConstant(dl, VecVT));
+    SDValue Res =
+        DAG.getNode(ISD::VSELECT, dl, VecVT, CorrVec, Adjusted, Partial);
+
+    Results.push_back(DAG.getBitcast(VT, Res));
+    return;
+  }
   case ISD::CTPOP: {
     assert(N->getValueType(0) == MVT::i64 && "Unexpected VT!");
     // If we have at most 32 active bits, then perform as i32 CTPOP.
@@ -39303,7 +39374,6 @@ void X86TargetLowering::computeKnownBitsForTargetNode(const SDValue Op,
 
     // If the mask control (lower 8 bits) is less than the bitwidth, then the
     // upper bits are set to zero: dst[BW:IMM8] = 0
-    // TODO: Generalise this to use Known2 getMinValue() + getMaxValue().
     Known2 = Known2.trunc(8);
     if (Known2.isConstant()) {
       uint64_t Mask = Known2.getConstant().getZExtValue();
@@ -39313,6 +39383,27 @@ void X86TargetLowering::computeKnownBitsForTargetNode(const SDValue Op,
         if (Known.isConstant())
           break;
       }
+    }
+
+    // If the mask control minimum value is >= bitwidth,
+    // the src knownbits are valid and can be returned
+    APInt MaskMinValue = Known2.getMinValue();
+    if (MaskMinValue.uge(BitWidth))
+      break;
+
+    // If the mask control maximum value is < bitwidth,
+    // all src knownbits above maximum value are cleared to zero
+    // all src knownbits below minimum value stay
+    // in between only src known zero bits remain
+    APInt MaskMaxValue = Known2.getMaxValue();
+    if (MaskMaxValue.ult(BitWidth)) {
+      uint64_t MinValue = MaskMinValue.getZExtValue();
+      uint64_t MaxValue = MaskMaxValue.getZExtValue();
+      Known.One.clearBits(MaxValue, BitWidth);
+      Known.Zero.setBits(MaxValue, BitWidth);
+
+      Known.One.clearBits(MinValue, MaxValue);
+      break;
     }
 
     // Zeros are retained from the src operand. But not necessarily ones.
@@ -43478,6 +43569,15 @@ static SDValue combineTargetShuffle(SDValue N, const SDLoc &DL,
       }
     }
 
+    return SDValue();
+  }
+  case X86ISD::EXPAND: {
+    SDValue ExpVec = N.getOperand(0);
+    SDValue PassThru = N.getOperand(1);
+    SDValue ExpMask = N.getOperand(2);
+    if (auto *Msk = dyn_cast<ConstantSDNode>(peekThroughBitcasts(ExpMask)))
+      if (Msk->getAPIntValue().isMask())
+        return DAG.getSelect(DL, VT, ExpMask, ExpVec, PassThru);
     return SDValue();
   }
   case X86ISD::VPERMV: {
