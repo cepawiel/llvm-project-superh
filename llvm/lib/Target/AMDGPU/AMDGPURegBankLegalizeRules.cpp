@@ -863,10 +863,11 @@ RegBankLegalizeRules::RegBankLegalizeRules(const GCNSubtarget &_ST,
       .Div(S64, {{Vgpr64},
                  {Vgpr64, Vgpr64, SgprV4S32_WF, Vgpr32, Vgpr32, Sgpr32_WF}});
 
-  addRulesForGOpcs({G_AMDGPU_BUFFER_ATOMIC_SWAP, G_AMDGPU_BUFFER_ATOMIC_UMAX,
-                    G_AMDGPU_BUFFER_ATOMIC_UMIN, G_AMDGPU_BUFFER_ATOMIC_SMAX,
-                    G_AMDGPU_BUFFER_ATOMIC_SMIN, G_AMDGPU_BUFFER_ATOMIC_FMAX,
-                    G_AMDGPU_BUFFER_ATOMIC_FMIN},
+  addRulesForGOpcs({G_AMDGPU_BUFFER_ATOMIC_ADD, G_AMDGPU_BUFFER_ATOMIC_FMAX,
+                    G_AMDGPU_BUFFER_ATOMIC_FMIN, G_AMDGPU_BUFFER_ATOMIC_SMAX,
+                    G_AMDGPU_BUFFER_ATOMIC_SMIN, G_AMDGPU_BUFFER_ATOMIC_SUB,
+                    G_AMDGPU_BUFFER_ATOMIC_SWAP, G_AMDGPU_BUFFER_ATOMIC_UMAX,
+                    G_AMDGPU_BUFFER_ATOMIC_UMIN},
                    Standard)
       .Div(S32, {{Vgpr32}, {Vgpr32, SgprV4S32_WF, Vgpr32, Vgpr32, Sgpr32_WF}})
       .Div(S64, {{Vgpr64}, {Vgpr64, SgprV4S32_WF, Vgpr32, Vgpr32, Sgpr32_WF}});
@@ -1490,6 +1491,12 @@ RegBankLegalizeRules::RegBankLegalizeRules(const GCNSubtarget &_ST,
       .Any({{}, {{}, {}}});
 
   addRulesForIOpcs({amdgcn_s_ttracedata}).Any({{}, {{}, {IntrId, SgprB32_M0}}});
+
+  addRulesForIOpcs({amdgcn_s_sleep_var})
+      .Any({{}, {{}, {IntrId, SgprB32_ReadFirstLane}}});
+
+  addRulesForIOpcs({amdgcn_s_prefetch_data})
+      .Any({{}, {{}, {IntrId, SgprB64_ReadFirstLane, SgprB32_ReadFirstLane}}});
 
   // This is "intrinsic lane mask" it was set to i32/i64 in llvm-ir.
   addRulesForIOpcs({amdgcn_end_cf})
