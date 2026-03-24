@@ -8218,6 +8218,7 @@ bool TargetLowering::expandDIVREMByConstant(SDNode *N,
   bool HasFSHR = isOperationLegal(ISD::FSHR, HiLoVT);
 
   auto GetFSHR = [&](SDValue Lo, SDValue Hi, unsigned ShiftAmt) {
+    assert(ShiftAmt > 0 && ShiftAmt < HBitWidth);
     if (HasFSHR)
       return DAG.getNode(ISD::FSHR, dl, HiLoVT, Hi, Lo,
                          DAG.getShiftAmountConstant(ShiftAmt, HiLoVT, dl));
@@ -8233,23 +8234,24 @@ bool TargetLowering::expandDIVREMByConstant(SDNode *N,
   // Shift the input by the number of TrailingZeros in the divisor. The
   // shifted out bits will be added to the remainder later.
   SDValue PartialRem;
-  if (TrailingZeros) {
+  if (TrailingZeros && Opcode != ISD::UDIV) {
     // Save the shifted off bits if we need the remainder.
-    if (Opcode != ISD::UDIV) {
-      APInt Mask = APInt::getLowBitsSet(HBitWidth, TrailingZeros);
-      PartialRem = DAG.getNode(ISD::AND, dl, HiLoVT, LL,
-                               DAG.getConstant(Mask, dl, HiLoVT));
-    }
-
-    LL = GetFSHR(LL, LH, TrailingZeros);
-    LH = DAG.getNode(ISD::SRL, dl, HiLoVT, LH,
-                     DAG.getShiftAmountConstant(TrailingZeros, HiLoVT, dl));
+    APInt Mask = APInt::getLowBitsSet(HBitWidth, TrailingZeros);
+    PartialRem = DAG.getNode(ISD::AND, dl, HiLoVT, LL,
+                             DAG.getConstant(Mask, dl, HiLoVT));
   }
 
   SDValue Sum;
   // If BestChunkWidth is HBitWidth add low and high half. If there is a carry
   // out, add that to the final sum.
   if (BestChunkWidth == HBitWidth) {
+    // Shift LH:LL right if there were trailing zeros in the divisor.
+    if (TrailingZeros) {
+      LL = GetFSHR(LL, LH, TrailingZeros);
+      LH = DAG.getNode(ISD::SRL, dl, HiLoVT, LH,
+                       DAG.getShiftAmountConstant(TrailingZeros, HiLoVT, dl));
+    }
+
     // Use uaddo_carry if we can, otherwise use a compare to detect overflow.
     EVT SetCCType =
         getSetCCResultType(DAG.getDataLayout(), *DAG.getContext(), HiLoVT);
@@ -8278,16 +8280,17 @@ bool TargetLowering::expandDIVREMByConstant(SDNode *N,
         APInt::getLowBitsSet(HBitWidth, BestChunkWidth), dl, HiLoVT);
 
     for (unsigned I = 0; I < BitWidth - TrailingZeros; I += BestChunkWidth) {
+      // If there were trailing zeros in the divisor, increase the shift amount.
+      unsigned Shift = I + TrailingZeros;
       SDValue Chunk;
-      if (I == 0)
+      if (Shift == 0)
         Chunk = LL;
-      else if (I >= HBitWidth)
-        Chunk =
-            DAG.getNode(ISD::SRL, dl, HiLoVT, LH,
-                        DAG.getShiftAmountConstant(I - HBitWidth, HiLoVT, dl));
+      else if (Shift >= HBitWidth)
+        Chunk = DAG.getNode(
+            ISD::SRL, dl, HiLoVT, LH,
+            DAG.getShiftAmountConstant(Shift - HBitWidth, HiLoVT, dl));
       else
-        Chunk = GetFSHR(LL, LH, I);
-
+        Chunk = GetFSHR(LL, LH, Shift);
       // If we're on the last chunk, we don't need an AND.
       if (I + BestChunkWidth < BitWidth - TrailingZeros)
         Chunk = DAG.getNode(ISD::AND, dl, HiLoVT, Chunk, Mask);
@@ -8305,6 +8308,13 @@ bool TargetLowering::expandDIVREMByConstant(SDNode *N,
   SDValue RemH = DAG.getConstant(0, dl, HiLoVT);
 
   if (Opcode != ISD::UREM) {
+    // If we didn't shift LH/LR earlier, do it now.
+    if (BestChunkWidth != HBitWidth && TrailingZeros) {
+      LL = GetFSHR(LL, LH, TrailingZeros);
+      LH = DAG.getNode(ISD::SRL, dl, HiLoVT, LH,
+                       DAG.getShiftAmountConstant(TrailingZeros, HiLoVT, dl));
+    }
+
     // Subtract the remainder from the shifted dividend.
     SDValue Dividend = DAG.getNode(ISD::BUILD_PAIR, dl, VT, LL, LH);
     SDValue Rem = DAG.getNode(ISD::BUILD_PAIR, dl, VT, RemL, RemH);
@@ -8327,12 +8337,13 @@ bool TargetLowering::expandDIVREMByConstant(SDNode *N,
 
   if (Opcode != ISD::UDIV) {
     // If we shifted the input, shift the remainder left and add the bits we
-    // shifted off the input. This add does not overflow.
+    // shifted off the input.
     if (TrailingZeros) {
       RemL = DAG.getNode(ISD::SHL, dl, HiLoVT, RemL,
                          DAG.getShiftAmountConstant(TrailingZeros, HiLoVT, dl));
 
-      RemL = DAG.getNode(ISD::ADD, dl, HiLoVT, RemL, PartialRem);
+      RemL = DAG.getNode(ISD::OR, dl, HiLoVT, RemL, PartialRem,
+                         SDNodeFlags::Disjoint);
     }
     Result.push_back(RemL);
     Result.push_back(RemH);
@@ -10078,7 +10089,8 @@ SDValue TargetLowering::expandVectorFindLastActive(SDNode *N,
     VScaleRange = getVScaleRange(&DAG.getMachineFunction().getFunction(), 64);
   const TargetLowering &TLI = DAG.getTargetLoweringInfo();
   uint64_t EltWidth = TLI.getBitWidthForCttzElements(
-      EVT(getVectorIdxTy(DAG.getDataLayout())), MaskVT.getVectorElementCount(),
+      EVT(getVectorIdxTy(DAG.getDataLayout())).getTypeForEVT(*DAG.getContext()),
+      MaskVT.getVectorElementCount(),
       /*ZeroIsPoison=*/true, &VScaleRange);
   // If the step vector element type is smaller than the mask element type,
   // use the mask type directly to avoid widening issues.
@@ -12538,64 +12550,6 @@ SDValue TargetLowering::expandVECTOR_COMPRESS(SDNode *Node,
   }
 
   return DAG.getLoad(VecVT, DL, Chain, StackPtr, PtrInfo);
-}
-
-SDValue TargetLowering::expandCttzElts(SDNode *Node, SelectionDAG &DAG) const {
-  SDLoc DL(Node);
-  EVT VT = Node->getValueType(0);
-  SDValue Op = Node->getOperand(0);
-  EVT OpVT = Op.getValueType();
-
-  if (OpVT.getVectorElementType() != MVT::i1) {
-    // Compare the input vector elements to zero & use to count trailing zeros.
-    SDValue AllZero = DAG.getConstant(0, DL, OpVT);
-    EVT I1OpVT = EVT::getVectorVT(*DAG.getContext(), MVT::i1,
-                                  OpVT.getVectorElementCount());
-    // If cttz_elts is legal for the i1 type, use it instead of expanding.
-    if (isOperationLegalOrCustom(Node->getOpcode(), I1OpVT)) {
-      Op = DAG.getSetCC(DL, I1OpVT, Op, AllZero, ISD::SETNE);
-      return DAG.getNode(Node->getOpcode(), DL, VT, Op);
-    }
-
-    Op = DAG.getSetCC(DL, OpVT, Op, AllZero, ISD::SETNE);
-  }
-
-  // If the zero-is-poison flag is set, we can assume the upper limit
-  // of the result is VF-1.
-  bool ZeroIsPoison = Node->getOpcode() == ISD::CTTZ_ELTS_ZERO_POISON;
-  ConstantRange VScaleRange(1, true); // Dummy value.
-  if (OpVT.isScalableVector())
-    VScaleRange = getVScaleRange(&DAG.getMachineFunction().getFunction(), 64);
-  unsigned EltWidth = getBitWidthForCttzElements(
-      VT, OpVT.getVectorElementCount(), ZeroIsPoison, &VScaleRange);
-
-  EVT NewEltVT = MVT::getIntegerVT(EltWidth);
-
-  // Create the new vector type & get the vector length
-  EVT NewVT = EVT::getVectorVT(*DAG.getContext(), NewEltVT,
-                               OpVT.getVectorElementCount());
-
-  // Promote types now to avoid redundant zexts.
-  if (getTypeAction(NewVT.getSimpleVT()) == TypePromoteInteger) {
-    NewVT = getTypeToTransformTo(*DAG.getContext(), NewVT);
-    NewEltVT = NewVT.getVectorElementType();
-  }
-  if (getTypeAction(NewEltVT.getSimpleVT()) == TypePromoteInteger)
-    NewEltVT = getTypeToTransformTo(*DAG.getContext(), NewEltVT);
-
-  SDValue VL = DAG.getElementCount(DL, NewEltVT, NewVT.getVectorElementCount());
-
-  SDValue StepVec = DAG.getStepVector(DL, NewVT);
-  SDValue SplatVL = DAG.getSplat(NewVT, DL, VL);
-  SDValue StepVL = DAG.getNode(ISD::SUB, DL, NewVT, SplatVL, StepVec);
-  SDValue Ext = DAG.getSExtOrTrunc(Op, DL, NewVT);
-  SDValue And = DAG.getNode(ISD::AND, DL, NewVT, StepVL, Ext);
-  SDValue Max =
-      DAG.getNode(ISD::VECREDUCE_UMAX, DL, NewVT.getVectorElementType(), And);
-  SDValue Sub = DAG.getNode(ISD::SUB, DL, NewEltVT, VL,
-                            DAG.getZExtOrTrunc(Max, DL, NewEltVT));
-
-  return DAG.getZExtOrTrunc(Sub, DL, VT);
 }
 
 SDValue TargetLowering::expandPartialReduceMLA(SDNode *N,
