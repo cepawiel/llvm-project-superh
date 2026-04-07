@@ -114,6 +114,11 @@ Improvements to clang-tidy
 New checks
 ^^^^^^^^^^
 
+- New :doc:`bugprone-assignment-in-selection-statement
+  <clang-tidy/checks/bugprone/assignment-in-selection-statement>` check.
+
+  Finds assignments within selection statements.
+
 - New :doc:`bugprone-unsafe-to-allow-exceptions
   <clang-tidy/checks/bugprone/unsafe-to-allow-exceptions>` check.
 
@@ -177,6 +182,10 @@ New checks
 
 New check aliases
 ^^^^^^^^^^^^^^^^^
+
+- New alias :doc:`cert-exp45-c <clang-tidy/checks/cert/exp45-c>`
+  to :doc:`bugprone-assignment-in-selection-statement
+  <clang-tidy/checks/bugprone/assignment-in-selection-statement>`.
 
 - Renamed :doc:`hicpp-exception-baseclass
   <clang-tidy/checks/hicpp/exception-baseclass>`
@@ -340,6 +349,12 @@ Changes in existing checks
 - Improved :doc:`misc-unused-using-decls
   <clang-tidy/checks/misc/unused-using-decls>` to not diagnose ``using``
   declarations as unused if they're exported from a module.
+
+- Improved :doc:`misc-use-internal-linkage
+  <clang-tidy/checks/misc/use-internal-linkage>` to not suggest giving
+  internal linkage to entities defined in C++ module interface units.
+  Because it only sees one file at a time, the check can't be sure
+  such entities aren't referenced in any other files of that module.
 
 - Improved :doc:`modernize-pass-by-value
   <clang-tidy/checks/modernize/pass-by-value>` check by adding `IgnoreMacros`
