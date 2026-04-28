@@ -320,6 +320,7 @@ TEST(LlvmLibcSharedMathTest, AllLongDouble) {
   EXPECT_FP_EQ(0.0L, canonicalizel_cx);
 
   EXPECT_FP_EQ(bfloat16(5.0), LIBC_NAMESPACE::shared::bf16addl(2.0L, 3.0L));
+  EXPECT_FP_EQ(bfloat16(0.0), LIBC_NAMESPACE::shared::bf16subl(0.0L, 0.0L));
   EXPECT_FP_EQ(bfloat16(2.0), LIBC_NAMESPACE::shared::bf16divl(6.0L, 3.0L));
   EXPECT_FP_EQ(bfloat16(0.0), LIBC_NAMESPACE::shared::bf16mull(0.0L, 0.0L));
   EXPECT_FP_EQ(bfloat16(10.0),
@@ -363,6 +364,8 @@ TEST(LlvmLibcSharedMathTest, AllLongDouble) {
   EXPECT_FP_EQ(1.0f16, LIBC_NAMESPACE::shared::f16sqrtl(1.0L));
   EXPECT_FP_EQ(10.0f16, LIBC_NAMESPACE::shared::f16fmal(2.0L, 3.0L, 4.0L));
 #endif // LIBC_TYPES_HAS_FLOAT16
+
+  EXPECT_FP_EQ(0.0L, LIBC_NAMESPACE::shared::sqrtl(0.0L));
 }
 
 #endif // LIBC_TYPES_LONG_DOUBLE_IS_DOUBLE_DOUBLE
@@ -536,4 +539,7 @@ TEST(LlvmLibcSharedMathTest, AllBFloat16) {
   EXPECT_FP_EQ(bfloat16(0.0),
                LIBC_NAMESPACE::shared::nexttowardbf16(bfloat16(0.0), 0.0L));
 #endif // LIBC_TYPES_LONG_DOUBLE_IS_DOUBLE_DOUBLE
+
+  EXPECT_EQ(0, LIBC_NAMESPACE::shared::ilogbbf16(bfloat16(1.0)));
+  EXPECT_EQ(0L, LIBC_NAMESPACE::shared::llogbbf16(bfloat16(1.0)));
 }
