@@ -955,6 +955,35 @@ add_header_library(
 )
 
 add_header_library(
+  fmaximum_mag_numf128
+  HDRS
+    fmaximum_mag_numf128.h
+  DEPENDS
+    libc.include.llvm-libc-types.float128
+    libc.src.__support.FPUtil.basic_operations
+    libc.src.__support.macros.config
+)
+
+add_header_library(
+  fmaximum_mag_numf16
+  HDRS
+    fmaximum_mag_numf16.h
+  DEPENDS
+    libc.include.llvm-libc-macros.float16_macros
+    libc.src.__support.FPUtil.basic_operations
+    libc.src.__support.macros.config
+)
+
+add_header_library(
+  fmaximum_mag_numl
+  HDRS
+    fmaximum_mag_numl.h
+  DEPENDS
+    libc.src.__support.FPUtil.basic_operations
+    libc.src.__support.macros.config
+)
+
+add_header_library(
   fmaximum_num
   HDRS
     fmaximum_num.h
@@ -1202,6 +1231,65 @@ add_header_library(
 )
 
 add_header_library(
+  fminimum_mag_num
+  HDRS
+    fminimum_mag_num.h
+  DEPENDS
+    libc.src.__support.FPUtil.basic_operations
+    libc.src.__support.macros.config
+)
+
+add_header_library(
+  fminimum_mag_numbf16
+  HDRS
+    fminimum_mag_numbf16.h
+  DEPENDS
+    libc.src.__support.FPUtil.basic_operations
+    libc.src.__support.FPUtil.bfloat16
+    libc.src.__support.macros.config
+  FLAGS
+    MISC_MATH_BASIC_OPS_OPT
+)
+
+add_header_library(
+  fminimum_mag_numf
+  HDRS
+    fminimum_mag_numf.h
+  DEPENDS
+    libc.src.__support.FPUtil.basic_operations
+    libc.src.__support.macros.config
+)
+
+add_header_library(
+  fminimum_mag_numf128
+  HDRS
+    fminimum_mag_numf128.h
+  DEPENDS
+    libc.include.llvm-libc-types.float128
+    libc.src.__support.FPUtil.basic_operations
+    libc.src.__support.macros.config
+)
+
+add_header_library(
+  fminimum_mag_numf16
+  HDRS
+    fminimum_mag_numf16.h
+  DEPENDS
+    libc.include.llvm-libc-macros.float16_macros
+    libc.src.__support.FPUtil.basic_operations
+    libc.src.__support.macros.config
+)
+
+add_header_library(
+  fminimum_mag_numl
+  HDRS
+    fminimum_mag_numl.h
+  DEPENDS
+    libc.src.__support.FPUtil.basic_operations
+    libc.src.__support.macros.config
+)
+
+add_header_library(
   fminimum_num
   HDRS
     fminimum_num.h
@@ -1275,6 +1363,291 @@ add_header_library(
     libc.src.__support.macros.config
 )
 
+add_header_library(
+  fmod
+  HDRS
+    fmod.h
+  DEPENDS
+    libc.src.__support.FPUtil.generic.fmod
+    libc.src.__support.macros.config
+)
+
+add_header_library(
+  fmodbf16
+  HDRS
+    fmodbf16.h
+  DEPENDS
+    libc.src.__support.FPUtil.bfloat16
+    libc.src.__support.FPUtil.generic.fmod
+    libc.src.__support.macros.config
+)
+
+add_header_library(
+  fmodf
+  HDRS
+    fmodf.h
+  DEPENDS
+    libc.src.__support.FPUtil.generic.fmod
+    libc.src.__support.macros.config
+)
+
+add_header_library(
+  fmodf128
+  HDRS
+    fmodf128.h
+  DEPENDS
+    libc.include.llvm-libc-types.float128
+    libc.src.__support.FPUtil.generic.fmod
+    libc.src.__support.macros.config
+)
+
+add_header_library(
+  fmodf16
+  HDRS
+    fmodf16.h
+  DEPENDS
+    libc.include.llvm-libc-macros.float16_macros
+    libc.src.__support.FPUtil.generic.fmod
+    libc.src.__support.macros.config
+)
+
+add_header_library(
+  fmodl
+  HDRS
+    fmodl.h
+  DEPENDS
+    libc.src.__support.FPUtil.generic.fmod
+    libc.src.__support.macros.config
+)
+
+add_header_library(
+  fmul
+  HDRS
+    fmul.h
+  DEPENDS
+    libc.hdr.errno_macros
+    libc.hdr.fenv_macros
+    libc.src.__support.FPUtil.double_double
+    libc.src.__support.macros.config
+)
+
+add_header_library(
+  fmulf128
+  HDRS
+    fmulf128.h
+  DEPENDS
+    libc.include.llvm-libc-types.float128
+    libc.src.__support.FPUtil.generic.mul
+    libc.src.__support.macros.config
+)
+
+add_header_library(
+  fmull
+  HDRS
+    fmull.h
+  DEPENDS
+    libc.src.__support.FPUtil.generic.mul
+    libc.src.__support.macros.config
+)
+
+add_header_library(
+  frexp
+  HDRS
+    frexp.h
+  DEPENDS
+    libc.src.__support.FPUtil.manipulation_functions
+    libc.src.__support.macros.config
+)
+
+add_header_library(
+  frexpbf16
+  HDRS
+    frexpbf16.h
+  DEPENDS
+    libc.src.__support.FPUtil.bfloat16
+    libc.src.__support.FPUtil.manipulation_functions
+    libc.src.__support.macros.config
+)
+
+add_header_library(
+  frexpl
+  HDRS
+    frexpl.h
+  DEPENDS
+    libc.src.__support.FPUtil.manipulation_functions
+    libc.src.__support.macros.config
+)
+
+add_header_library(
+  fromfp
+  HDRS
+    fromfp.h
+  DEPENDS
+    libc.src.__support.FPUtil.nearest_integer_operations
+    libc.src.__support.macros.config
+)
+
+add_header_library(
+  fromfpbf16
+  HDRS
+    fromfpbf16.h
+  DEPENDS
+    libc.src.__support.FPUtil.bfloat16
+    libc.src.__support.FPUtil.nearest_integer_operations
+    libc.src.__support.macros.config
+)
+
+add_header_library(
+  fromfpf
+  HDRS
+    fromfpf.h
+  DEPENDS
+    libc.src.__support.FPUtil.nearest_integer_operations
+    libc.src.__support.macros.config
+)
+
+add_header_library(
+  fromfpf128
+  HDRS
+    fromfpf128.h
+  DEPENDS
+    libc.include.llvm-libc-types.float128
+    libc.src.__support.FPUtil.nearest_integer_operations
+    libc.src.__support.macros.config
+)
+
+add_header_library(
+  fromfpf16
+  HDRS
+    fromfpf16.h
+  DEPENDS
+    libc.include.llvm-libc-macros.float16_macros
+    libc.src.__support.FPUtil.nearest_integer_operations
+    libc.src.__support.macros.config
+)
+
+add_header_library(
+  fromfpl
+  HDRS
+    fromfpl.h
+  DEPENDS
+    libc.src.__support.FPUtil.nearest_integer_operations
+    libc.src.__support.macros.config
+)
+
+add_header_library(
+  fromfpx
+  HDRS
+    fromfpx.h
+  DEPENDS
+    libc.src.__support.FPUtil.nearest_integer_operations
+    libc.src.__support.macros.config
+)
+
+add_header_library(
+  fromfpxbf16
+  HDRS
+    fromfpxbf16.h
+  DEPENDS
+    libc.src.__support.FPUtil.bfloat16
+    libc.src.__support.FPUtil.nearest_integer_operations
+    libc.src.__support.macros.config
+)
+
+add_header_library(
+  fromfpxf
+  HDRS
+    fromfpxf.h
+  DEPENDS
+    libc.src.__support.FPUtil.nearest_integer_operations
+    libc.src.__support.macros.config
+)
+
+add_header_library(
+  fromfpxf128
+  HDRS
+    fromfpxf128.h
+  DEPENDS
+    libc.include.llvm-libc-types.float128
+    libc.src.__support.FPUtil.nearest_integer_operations
+    libc.src.__support.macros.config
+)
+
+add_header_library(
+  fromfpxf16
+  HDRS
+    fromfpxf16.h
+  DEPENDS
+    libc.include.llvm-libc-macros.float16_macros
+    libc.src.__support.FPUtil.nearest_integer_operations
+    libc.src.__support.macros.config
+)
+
+add_header_library(
+  fromfpxl
+  HDRS
+    fromfpxl.h
+  DEPENDS
+    libc.src.__support.FPUtil.nearest_integer_operations
+    libc.src.__support.macros.config
+)
+
+add_header_library(
+  fsub
+  HDRS
+    fsub.h
+  DEPENDS
+    libc.src.__support.FPUtil.generic.add_sub
+    libc.src.__support.macros.config
+)
+
+add_header_library(
+  fsubf128
+  HDRS
+    fsubf128.h
+  DEPENDS
+    libc.include.llvm-libc-types.float128
+    libc.src.__support.FPUtil.generic.add_sub
+    libc.src.__support.macros.config
+)
+
+add_header_library(
+  fsubl
+  HDRS
+    fsubl.h
+  DEPENDS
+    libc.src.__support.FPUtil.generic.add_sub
+    libc.src.__support.macros.config
+)
+
+
+add_header_library(
+  ldexp
+  HDRS
+    ldexp.h
+  DEPENDS
+    libc.src.__support.FPUtil.manipulation_functions
+    libc.src.__support.macros.config
+)
+
+add_header_library(
+  ldexpbf16
+  HDRS
+    ldexpbf16.h
+  DEPENDS
+    libc.src.__support.FPUtil.bfloat16
+    libc.src.__support.FPUtil.manipulation_functions
+    libc.src.__support.macros.config
+)
+
+add_header_library(
+  ldexpl
+  HDRS
+    ldexpl.h
+  DEPENDS
+    libc.src.__support.FPUtil.manipulation_functions
+    libc.src.__support.macros.config
+)
 
 add_header_library(
   llogbbf16
@@ -1292,6 +1665,303 @@ add_header_library(
     ilogbbf16.h
   DEPENDS
     libc.src.__support.FPUtil.bfloat16
+    libc.src.__support.FPUtil.manipulation_functions
+    libc.src.__support.macros.config
+)
+
+add_header_library(
+  modf
+  HDRS
+    modf.h
+  DEPENDS
+    libc.src.__support.FPUtil.manipulation_functions
+    libc.src.__support.macros.config
+)
+
+add_header_library(
+  modfbf16
+  HDRS
+    modfbf16.h
+  DEPENDS
+    libc.src.__support.FPUtil.bfloat16
+    libc.src.__support.FPUtil.manipulation_functions
+    libc.src.__support.macros.config
+)
+
+add_header_library(
+  modff
+  HDRS
+    modff.h
+  DEPENDS
+    libc.src.__support.FPUtil.manipulation_functions
+    libc.src.__support.macros.config
+)
+
+add_header_library(
+  modff128
+  HDRS
+    modff128.h
+  DEPENDS
+    libc.include.llvm-libc-types.float128
+    libc.src.__support.FPUtil.manipulation_functions
+    libc.src.__support.macros.config
+)
+
+add_header_library(
+  modff16
+  HDRS
+    modff16.h
+  DEPENDS
+    libc.include.llvm-libc-macros.float16_macros
+    libc.src.__support.FPUtil.manipulation_functions
+    libc.src.__support.macros.config
+)
+
+add_header_library(
+  modfl
+  HDRS
+    modfl.h
+  DEPENDS
+    libc.src.__support.FPUtil.manipulation_functions
+    libc.src.__support.macros.config
+)
+
+add_header_library(
+  remainder
+  HDRS
+    remainder.h
+  DEPENDS
+    libc.src.__support.FPUtil.division_and_remainder_operations
+    libc.src.__support.macros.config
+)
+
+add_header_library(
+  remainderbf16
+  HDRS
+    remainderbf16.h
+  DEPENDS
+    libc.src.__support.FPUtil.bfloat16
+    libc.src.__support.FPUtil.division_and_remainder_operations
+    libc.src.__support.macros.config
+)
+
+add_header_library(
+  remainderf
+  HDRS
+    remainderf.h
+  DEPENDS
+    libc.src.__support.FPUtil.division_and_remainder_operations
+    libc.src.__support.macros.config
+)
+
+add_header_library(
+  remainderf128
+  HDRS
+    remainderf128.h
+  DEPENDS
+    libc.include.llvm-libc-types.float128
+    libc.src.__support.FPUtil.division_and_remainder_operations
+    libc.src.__support.macros.config
+)
+
+add_header_library(
+  remainderf16
+  HDRS
+    remainderf16.h
+  DEPENDS
+    libc.include.llvm-libc-macros.float16_macros
+    libc.src.__support.FPUtil.division_and_remainder_operations
+    libc.src.__support.macros.config
+)
+
+add_header_library(
+  remainderl
+  HDRS
+    remainderl.h
+  DEPENDS
+    libc.src.__support.FPUtil.division_and_remainder_operations
+    libc.src.__support.macros.config
+)
+
+add_header_library(
+  remquo
+  HDRS
+    remquo.h
+  DEPENDS
+    libc.src.__support.FPUtil.division_and_remainder_operations
+    libc.src.__support.macros.config
+)
+
+add_header_library(
+  remquobf16
+  HDRS
+    remquobf16.h
+  DEPENDS
+    libc.src.__support.FPUtil.bfloat16
+    libc.src.__support.FPUtil.division_and_remainder_operations
+    libc.src.__support.macros.config
+)
+
+add_header_library(
+  remquof
+  HDRS
+    remquof.h
+  DEPENDS
+    libc.src.__support.FPUtil.division_and_remainder_operations
+    libc.src.__support.macros.config
+)
+
+add_header_library(
+  remquof128
+  HDRS
+    remquof128.h
+  DEPENDS
+    libc.include.llvm-libc-types.float128
+    libc.src.__support.FPUtil.division_and_remainder_operations
+    libc.src.__support.macros.config
+)
+
+add_header_library(
+  remquof16
+  HDRS
+    remquof16.h
+  DEPENDS
+    libc.include.llvm-libc-macros.float16_macros
+    libc.src.__support.FPUtil.division_and_remainder_operations
+    libc.src.__support.macros.config
+)
+
+add_header_library(
+  remquol
+  HDRS
+    remquol.h
+  DEPENDS
+    libc.src.__support.FPUtil.division_and_remainder_operations
+    libc.src.__support.macros.config
+)
+
+add_header_library(
+  scalbln
+  HDRS
+    scalbln.h
+  DEPENDS
+    libc.hdr.float_macros
+    libc.src.__support.FPUtil.manipulation_functions
+    libc.src.__support.macros.config
+)
+
+add_header_library(
+  scalblnbf16
+  HDRS
+    scalblnbf16.h
+  DEPENDS
+    libc.hdr.float_macros
+    libc.src.__support.FPUtil.bfloat16
+    libc.src.__support.FPUtil.manipulation_functions
+    libc.src.__support.macros.config
+)
+
+add_header_library(
+  scalblnf
+  HDRS
+    scalblnf.h
+  DEPENDS
+    libc.hdr.float_macros
+    libc.src.__support.FPUtil.manipulation_functions
+    libc.src.__support.macros.config
+)
+
+add_header_library(
+  scalblnf128
+  HDRS
+    scalblnf128.h
+  DEPENDS
+    libc.hdr.float_macros
+    libc.include.llvm-libc-types.float128
+    libc.src.__support.FPUtil.manipulation_functions
+    libc.src.__support.macros.config
+)
+
+add_header_library(
+  scalblnf16
+  HDRS
+    scalblnf16.h
+  DEPENDS
+    libc.hdr.float_macros
+    libc.include.llvm-libc-macros.float16_macros
+    libc.src.__support.FPUtil.manipulation_functions
+    libc.src.__support.macros.config
+)
+
+add_header_library(
+  scalblnl
+  HDRS
+    scalblnl.h
+  DEPENDS
+    libc.hdr.float_macros
+    libc.src.__support.FPUtil.manipulation_functions
+    libc.src.__support.macros.config
+)
+
+add_header_library(
+  scalbn
+  HDRS
+    scalbn.h
+  DEPENDS
+    libc.hdr.float_macros
+    libc.src.__support.FPUtil.manipulation_functions
+    libc.src.__support.macros.config
+)
+
+add_header_library(
+  scalbnbf16
+  HDRS
+    scalbnbf16.h
+  DEPENDS
+    libc.hdr.float_macros
+    libc.src.__support.FPUtil.bfloat16
+    libc.src.__support.FPUtil.manipulation_functions
+    libc.src.__support.macros.config
+)
+
+add_header_library(
+  scalbnf
+  HDRS
+    scalbnf.h
+  DEPENDS
+    libc.hdr.float_macros
+    libc.src.__support.FPUtil.manipulation_functions
+    libc.src.__support.macros.config
+)
+
+add_header_library(
+  scalbnf128
+  HDRS
+    scalbnf128.h
+  DEPENDS
+    libc.hdr.float_macros
+    libc.include.llvm-libc-types.float128
+    libc.src.__support.FPUtil.manipulation_functions
+    libc.src.__support.macros.config
+)
+
+add_header_library(
+  scalbnf16
+  HDRS
+    scalbnf16.h
+  DEPENDS
+    libc.hdr.float_macros
+    libc.include.llvm-libc-macros.float16_macros
+    libc.src.__support.FPUtil.manipulation_functions
+    libc.src.__support.macros.config
+)
+
+add_header_library(
+  scalbnl
+  HDRS
+    scalbnl.h
+  DEPENDS
+    libc.hdr.float_macros
     libc.src.__support.FPUtil.manipulation_functions
     libc.src.__support.macros.config
 )
