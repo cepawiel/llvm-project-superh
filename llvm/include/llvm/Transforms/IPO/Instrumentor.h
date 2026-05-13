@@ -357,7 +357,12 @@ struct InstrumentationConfig {
     TargetRegex = BaseConfigurationOption::createStringOption(
         *this, "target_regex",
         "Regular expression to be matched against the module target. "
-        "Only targets that match this regex will be instrumented",
+        "Only targets that match this regex will be instrumented.",
+        "");
+    FunctionRegex = BaseConfigurationOption::createStringOption(
+        *this, "function_regex",
+        "Regular expression to be matched against a function name. "
+        "Only functions that match this regex will be instrumented.",
         "");
     DemangleFunctionNames = BaseConfigurationOption::createBoolOption(
         *this, "demangle_function_names",
@@ -424,6 +429,7 @@ struct InstrumentationConfig {
   std::unique_ptr<BaseConfigurationOption> RuntimeStubsFile;
   std::unique_ptr<BaseConfigurationOption> DemangleFunctionNames;
   std::unique_ptr<BaseConfigurationOption> TargetRegex;
+  std::unique_ptr<BaseConfigurationOption> FunctionRegex;
   std::unique_ptr<BaseConfigurationOption> HostEnabled;
   std::unique_ptr<BaseConfigurationOption> GPUEnabled;
 
@@ -649,6 +655,27 @@ struct AllocaIO final : public InstructionIO<Instruction::Alloca> {
     PreIO->init(IConf, IIRB);
     auto *PostIO = IConf.allocate<AllocaIO>(false);
     PostIO->init(IConf, IIRB);
+  }
+};
+
+struct UnreachableIO final : public InstructionIO<Instruction::Unreachable> {
+  UnreachableIO() : InstructionIO<Instruction::Unreachable>(/*IsPRE*/ true) {}
+
+  enum ConfigKind {
+    PassId,
+    NumConfig,
+  };
+
+  using ConfigTy = BaseConfigTy<ConfigKind>;
+  ConfigTy Config;
+
+  void init(InstrumentationConfig &IConf, InstrumentorIRBuilderTy &IIRB,
+            ConfigTy *UserConfig = nullptr);
+
+  static void populate(InstrumentationConfig &IConf,
+                       InstrumentorIRBuilderTy &IIRB) {
+    auto *PreIO = IConf.allocate<UnreachableIO>();
+    PreIO->init(IConf, IIRB);
   }
 };
 
