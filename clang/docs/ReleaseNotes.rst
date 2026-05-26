@@ -104,6 +104,9 @@ ABI Changes in This Version
 - Fixed Itanium mangling for lambdas in instantiated non-static data member
   initializers by preserving the field-name closure-prefix. This changes the
   mangled names for affected lambdas. (#GH190555)
+- Clang now uses MSVC-compatible manglings for supported AArch64 SVE builtin
+  types when targeting the Microsoft ABI. This changes symbol names for
+  affected declarations compared to previous Clang releases. (#GH196170)
 
 AST Dumping Potentially Breaking Changes
 ----------------------------------------
@@ -716,6 +719,8 @@ Miscellaneous Clang Crashes Fixed
 - Fixed an assertion failure when parsing an invalid out-of-line enum definition with template parameters. (#GH187909)
 - Fixed an assertion failure on invalid template template parameter during typo correction. (#GH183983)
 - Fixed an assertion failure in ``isAtEndOfMacroExpansion`` on macro expansions crossing the boundary of two fileIDs. (#GH115007), (#GH21755)
+- Fixed an assertion failure when ``__builtin_dump_struct`` is used with an
+  immediate-escalated callable. (#GH192846)
 
 OpenACC Specific Changes
 ------------------------
