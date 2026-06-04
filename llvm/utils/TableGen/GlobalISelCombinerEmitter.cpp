@@ -1074,7 +1074,7 @@ void CombineRuleBuilder::addCXXPredicate(RuleMatcher &M,
                                          const PatternAlternatives &Alts) {
   // FIXME: Hack so C++ code is executed last. May not work for more complex
   // patterns.
-  auto &IM = *std::prev(M.insnmatchers().end());
+  auto &IM = *std::prev(M.roots().end());
   auto Loc = RuleDef.getLoc();
   const auto AddComment = [&](raw_ostream &OS) {
     OS << "// Pattern Alternatives: ";
@@ -1901,8 +1901,9 @@ bool CombineRuleBuilder::emitApplyPatterns(CodeExpansions &CE, RuleMatcher &M) {
 
   // Erase the root.
   unsigned RootInsnID =
-      M.getInsnVarID(M.getInstructionMatcher(MatchRoot->getName()));
-  M.addAction<EraseInstAction>(RootInsnID);
+      M.getInstructionMatcher(MatchRoot->getName()).getInsnVarID();
+  if (M.tryEraseInsnID(RootInsnID))
+    M.addAction<EraseInstAction>(RootInsnID);
 
   return true;
 }
@@ -1985,7 +1986,7 @@ bool CombineRuleBuilder::emitInstructionApplyPattern(
 
   // Now render this inst.
   auto &DstMI =
-      M.addAction<BuildMIAction>(M.allocateOutputInsnID(), &CGIP.getInst());
+      M.addAction<BuildMIAction>(M.allocateOutputInsnID(), M, &CGIP.getInst());
 
   bool HasEmittedIntrinsicID = false;
   const auto EmitIntrinsicID = [&]() {
@@ -2028,7 +2029,7 @@ bool CombineRuleBuilder::emitInstructionApplyPattern(
         // the previous condition should have passed.
         assert(MatchOpTable.lookup(OpName).Found &&
                !ApplyOpTable.getDef(OpName) && "Temp reg not emitted yet!");
-        DstMI.addRenderer<CopyRenderer>(OpName);
+        DstMI.addRenderer<CopyRenderer>(M, OpName);
       }
       continue;
     }
@@ -2056,7 +2057,7 @@ bool CombineRuleBuilder::emitInstructionApplyPattern(
         return false;
       }
       // redef of a match
-      DstMI.addRenderer<CopyRenderer>(OpName);
+      DstMI.addRenderer<CopyRenderer>(M, OpName);
       continue;
     }
 
@@ -2169,7 +2170,8 @@ bool CombineRuleBuilder::emitBuiltinApplyPattern(
   switch (P.getBuiltinKind()) {
   case BI_EraseRoot: {
     // Root is always inst 0.
-    M.addAction<EraseInstAction>(/*InsnID*/ 0);
+    if (M.tryEraseInsnID(0))
+      M.addAction<EraseInstAction>(/*InsnID*/ 0);
     return true;
   }
   case BI_ReplaceReg: {
@@ -2566,7 +2568,7 @@ void GICombinerEmitter::emitRuleConfigImpl(raw_ostream &OS) {
 void GICombinerEmitter::collectMatchOpcodes(ArrayRef<RuleMatcher> Rules) {
   for (const RuleMatcher &Rule : Rules) {
     for (const CodeGenInstruction *I :
-         Rule.insnmatchers_front().getOpcodeMatcher().getAlternativeOpcodes())
+         Rule.roots_front().getOpcodeMatcher().getAlternativeOpcodes())
       MatchOpcodes.insert(I);
   }
 }
