@@ -1026,7 +1026,8 @@ void RequirementHandler::initAvailableCapabilitiesForVulkan(
   // Became core in Vulkan 1.2
   if (ST.isAtLeastSPIRVVer(VersionTuple(1, 5))) {
     addAvailableCaps(
-        {Capability::ShaderNonUniformEXT, Capability::RuntimeDescriptorArrayEXT,
+        {Capability::Int64Atomics, Capability::ShaderNonUniformEXT,
+         Capability::RuntimeDescriptorArrayEXT,
          Capability::InputAttachmentArrayDynamicIndexingEXT,
          Capability::UniformTexelBufferArrayDynamicIndexingEXT,
          Capability::StorageTexelBufferArrayDynamicIndexingEXT,
@@ -3020,7 +3021,6 @@ bool SPIRVModuleAnalysis::runOnModule(Module &M) {
 
   // Process type/const/global var/func decl instructions, number their
   // destination registers from 0 to N, collect Extensions and Capabilities.
-  collectReqs(M, MAI, MMI, *ST);
   collectDeclarations(M);
 
   // Number rest of registers from N+1 onwards.
