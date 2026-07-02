@@ -229,6 +229,11 @@ latest release, please see the [Clang Web Site](https://clang.llvm.org) or the
 - `__is_trivially_equality_comparable` no longer returns false for all enum types. (#GH132672)
 - `auto` parameters are now available in all C++ language modes as an extension.
 
+#### C++2d Feature Support
+
+- Clang now supports [P3733R1](https://wg21.link/p3733r1>) More named universal character escapes.
+  The change is applied as a DR to all C++ language modes. (#GH203944)
+
 #### C++2c Feature Support
 
 - Clang now propagates `constinit` and `constexpr` in structured bindings with tuple-like initializers.
@@ -830,6 +835,7 @@ latest release, please see the [Clang Web Site](https://clang.llvm.org) or the
 - Fixed a crash when parsing invalid friend declaration with storage-class specifier. (#GH186569)
 - Fixed a missing vtable for `dynamic_cast<FinalClass *>(this)` in a function template. (#GH198511)
 - Fixed an assertion failure during init-list checking of an array whose element type is an incomplete class. (#GH140685)
+- Fixed a crash when using a pack indexing type (e.g. ``Ts...[0]``) imported from another module. (#GH204479)
 
 #### Bug Fixes to AST Handling
 
