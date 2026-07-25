@@ -2178,9 +2178,11 @@ bool SimplifyCFGOpt::hoistSuccIdenticalTerminatorToSwitchOrIf(
   SmallVector<DominatorTree::UpdateType, 4> Updates;
 
   // Update any PHI nodes in our new successors.
+  SmallPtrSet<BasicBlock *, 8> VisitedSuccs;
   for (BasicBlock *Succ : successors(BB1)) {
     addPredecessorToBlock(Succ, TIParent, BB1);
-    if (DTU)
+
+    if (DTU && VisitedSuccs.insert(Succ).second)
       Updates.push_back({DominatorTree::Insert, TIParent, Succ});
   }
 
@@ -6142,13 +6144,11 @@ bool SimplifyCFGOpt::turnSwitchRangeIntoICmp(SwitchInst *SI,
   if (!HasDefault)
     createUnreachableSwitchDefault(SI, DTU);
 
-  auto *UnreachableDefault = SI->getDefaultDest();
-
   // Drop the switch.
   SI->eraseFromParent();
 
-  if (!HasDefault && DTU)
-    DTU->applyUpdates({{DominatorTree::Delete, BB, UnreachableDefault}});
+  if (DTU && isa<UncondBrInst>(NewBI))
+    DTU->applyUpdates({{DominatorTree::Delete, BB, OtherDest}});
 
   return true;
 }
