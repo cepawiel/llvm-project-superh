@@ -95,6 +95,10 @@ features cannot lower the translation-unit ABI level;
 
 #### C++2d Feature Support
 
+- Clang now supports [P3658R1](https://wg21.link/p3658r1) (Adjust identifier
+  following new Unicode recommendations), applied as a DR to all C++ language
+  modes.
+
 #### C++2c Feature Support
 
 - Clang now supports [P3533R2](https://www.open-std.org/jtc1/sc22/wg21/docs/papers/2025/p3533r2.html) (constexpr virtual inheritance).
@@ -345,6 +349,7 @@ features cannot lower the translation-unit ABI level;
 - Fixed an assertion failure when passing a wide string literal to `__builtin_nan`. (#GH212108)
 - Fixed a constraint comparison bug in partial ordering. (#GH182671)
 - Fixed a rejected-valid case that used an explicit object parameter in an out-of-line definition of a nested class member. (#GH136472)
+- Fixed a bug where `__func__`, `__PRETTY_FUNCTION__` and `__FUNCTION__` were not resolving to the proper function when inside a lambda return type (#GH211811)
 - Fixed USR generation for declarations whose signature mentions a class-type
   non-type template parameter. (#GH212351)
 
