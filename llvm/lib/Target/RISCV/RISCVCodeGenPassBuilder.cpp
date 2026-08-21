@@ -114,13 +114,12 @@ void RISCVCodeGenPassBuilder::addMachineSSAOptimization(
   }
 
   addMachineFunctionPass(RISCVVectorPeepholePass(), PMW);
-  // TODO: RISCVFoldMemOffsetPass
+  addMachineFunctionPass(RISCVFoldMemOffsetPass(), PMW);
 
   Base::addMachineSSAOptimization(PMW);
 
-  if (TM.getTargetTriple().isRISCV64()) {
-    // TODO: RISCVOptWInstrsPass
-  }
+  if (TM.getTargetTriple().isRISCV64())
+    addMachineFunctionPass(RISCVOptWInstrsPass(), PMW);
 }
 
 void RISCVCodeGenPassBuilder::addPreRegAlloc(PassManagerWrapper &PMW) {
