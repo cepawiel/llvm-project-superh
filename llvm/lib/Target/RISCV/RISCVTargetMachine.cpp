@@ -13,7 +13,6 @@
 #include "RISCVTargetMachine.h"
 #include "MCTargetDesc/RISCVBaseInfo.h"
 #include "RISCV.h"
-#include "RISCVGatherScatterLowering.h"
 #include "RISCVMachineFunctionInfo.h"
 #include "RISCVMachineScheduler.h"
 #include "RISCVTargetObjectFile.h"
@@ -137,7 +136,7 @@ extern "C" LLVM_ABI LLVM_EXTERNAL_VISIBILITY void LLVMInitializeRISCVTarget() {
   initializeRISCVFoldMemOffsetPass(*PR);
   initializeRISCVPreRAExpandPseudoPass(*PR);
   initializeRISCVExpandPseudoPass(*PR);
-  initializeRISCVVectorPeepholePass(*PR);
+  initializeRISCVVectorPeepholeLegacyPass(*PR);
   initializeRISCVVLOptimizerLegacyPass(*PR);
   initializeRISCVVMV0EliminationPass(*PR);
   initializeRISCVInsertVSETVLIPass(*PR);
@@ -468,13 +467,13 @@ bool RISCVPassConfig::addRegAssignAndRewriteOptimized() {
 
 void RISCVPassConfig::addIRPasses() {
   addPass(createAtomicExpandLegacyPass());
-  addPass(createRISCVZacasABIFixPass());
+  addPass(createRISCVZacasABIFixLegacyPass());
 
   if (getOptLevel() != CodeGenOptLevel::None) {
     if (EnableLoopDataPrefetch)
       addPass(createLoopDataPrefetchPass());
 
-    addPass(createRISCVGatherScatterLoweringPass());
+    addPass(createRISCVGatherScatterLoweringLegacyPass());
     addPass(createInterleavedAccessPass());
     addPass(createRISCVCodeGenPrepareLegacyPass());
   }
@@ -517,7 +516,7 @@ void RISCVPassConfig::addCodeGenPrepare() {
 }
 
 bool RISCVPassConfig::addInstSelector() {
-  addPass(createRISCVISelDag(getRISCVTargetMachine(), getOptLevel()));
+  addPass(createRISCVISelDagLegacyPass(getRISCVTargetMachine(), getOptLevel()));
 
   return false;
 }
@@ -625,7 +624,7 @@ void RISCVPassConfig::addMachineSSAOptimization() {
     addPass(createRISCVVLOptimizerLegacyPass());
   }
 
-  addPass(createRISCVVectorPeepholePass());
+  addPass(createRISCVVectorPeepholeLegacyPass());
   addPass(createRISCVFoldMemOffsetPass());
 
   TargetPassConfig::addMachineSSAOptimization();
