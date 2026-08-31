@@ -243,6 +243,10 @@ features cannot lower the translation-unit ABI level;
 
 ### Improvements to Clang's diagnostics
 
+- The `cannot overload a member function` diagnostic now describes the previous
+  declaration first, matching the order in which the declarations appear in the
+  source. (#GH219803)
+
 - More consistent rendering of Unicode characters in diagnostic messages.
 
 - Fixed `-Wunused-parameter` to diagnose coroutine parameters that are only
@@ -550,6 +554,11 @@ features cannot lower the translation-unit ABI level;
 - Fixed an assertion when an ill-formed qualified member function definition
   inside a union caused the union to be treated as a polymorphic class.
   (#GH213854)
+
+- Fixed an assertion when a type-trait keyword that had already been made
+  available as an identifier (e.g. `struct __make_unsigned`) was seen again
+  in a token that was lexed and cached before the first occurrence was parsed.
+  (#GH214128)
 
 #### Bug Fixes to AST Handling
 
