@@ -454,6 +454,12 @@ features cannot lower the translation-unit ABI level;
 
 - Clang now diagnoses more details when a constraint evaluates to false.
 
+- `-Wpointer-arith` no longer reports subtraction of pointers to a variably
+  modified type, such as `int[n]`, as a subtraction of pointers to a type of
+  zero size, unless the size is provably zero: a zero-sized base element or a
+  dimension that is a zero integer constant, as in `struct Empty vla[n]` or
+  `int vla[n][0]`. (#GH28328)
+
 ### Improvements to Clang's time-trace
 
 ### Improvements to Coverage Mapping
@@ -553,6 +559,9 @@ features cannot lower the translation-unit ABI level;
 - Compute value dependence correctly for structured bindings. This mostly
   affect C++26 constexpr structured bindings and expansion statements, but
   also affects some uses of plain structured bindings. (#GH211930)
+
+- Fixed an assertion when instantiating the body of a C++26 expansion
+  statement after a fatal error had occurred. (#GH214917)
 
 - Fixed friend declarations sometimes making non-visible default arguments
   incorrectly visible to default argument redefinition checks across modules.
@@ -705,6 +714,9 @@ features cannot lower the translation-unit ABI level;
 #### NetBSD Support
 
 #### WebAssembly Support
+
+- Added `__builtin_wasm_memory_copy` and `__builtin_wasm_memory_fill` builtins
+  for the WebAssembly `memory.copy` and `memory.fill` bulk memory instructions.
 
 #### AVR Support
 
