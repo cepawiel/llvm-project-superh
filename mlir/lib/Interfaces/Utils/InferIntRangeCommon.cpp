@@ -447,8 +447,8 @@ mlir::intrange::inferRemS(ArrayRef<ConstantIntRanges> argRanges) {
         APInt minRem = lhsMin.srem(maxDivisor);
         APInt maxRem = lhsMax.srem(maxDivisor);
         if (minRem.sle(maxRem)) {
-          smin = minRem;
-          smax = maxRem;
+          smin = std::move(minRem);
+          smax = std::move(maxRem);
         }
       }
     }
@@ -478,8 +478,8 @@ mlir::intrange::inferRemU(ArrayRef<ConstantIntRanges> argRanges) {
         APInt minRem = lhsMin.urem(rhsMax);
         APInt maxRem = lhsMax.urem(rhsMax);
         if (minRem.ule(maxRem)) {
-          umin = minRem;
-          umax = maxRem;
+          umin = std::move(minRem);
+          umax = std::move(maxRem);
         }
       }
     }
@@ -552,8 +552,9 @@ mlir::intrange::inferAnd(ArrayRef<ConstantIntRanges> argRanges) {
   auto andi = [](const APInt &a, const APInt &b) -> std::optional<APInt> {
     return a & b;
   };
-  return minMaxBy(andi, {lhsZeros, lhsOnes}, {rhsZeros, rhsOnes},
-                  /*isSigned=*/false);
+  std::array<APInt, 2> lhsBounds = {std::move(lhsZeros), std::move(lhsOnes)};
+  std::array<APInt, 2> rhsBounds = {std::move(rhsZeros), std::move(rhsOnes)};
+  return minMaxBy(andi, lhsBounds, rhsBounds, /*isSigned=*/false);
 }
 
 ConstantIntRanges
@@ -563,8 +564,9 @@ mlir::intrange::inferOr(ArrayRef<ConstantIntRanges> argRanges) {
   auto ori = [](const APInt &a, const APInt &b) -> std::optional<APInt> {
     return a | b;
   };
-  return minMaxBy(ori, {lhsZeros, lhsOnes}, {rhsZeros, rhsOnes},
-                  /*isSigned=*/false);
+  std::array<APInt, 2> lhsBounds = {std::move(lhsZeros), std::move(lhsOnes)};
+  std::array<APInt, 2> rhsBounds = {std::move(rhsZeros), std::move(rhsOnes)};
+  return minMaxBy(ori, lhsBounds, rhsBounds, /*isSigned=*/false);
 }
 
 /// Get bitmask of all bits which can change while iterating in
@@ -572,7 +574,8 @@ mlir::intrange::inferOr(ArrayRef<ConstantIntRanges> argRanges) {
 static APInt getVaryingBitsMask(const ConstantIntRanges &bound) {
   APInt leftVal = bound.umin(), rightVal = bound.umax();
   unsigned bitwidth = leftVal.getBitWidth();
-  unsigned differingBits = bitwidth - (leftVal ^ rightVal).countl_zero();
+  unsigned differingBits =
+      bitwidth - (std::move(leftVal) ^ rightVal).countl_zero();
   return APInt::getLowBitsSet(bitwidth, differingBits);
 }
 
@@ -580,11 +583,11 @@ ConstantIntRanges
 mlir::intrange::inferXor(ArrayRef<ConstantIntRanges> argRanges) {
   // Construct mask of varying bits for both ranges, xor values and then replace
   // masked bits with 0s and 1s to get min and max values respectively.
-  ConstantIntRanges lhs = argRanges[0], rhs = argRanges[1];
+  const ConstantIntRanges &lhs = argRanges[0], &rhs = argRanges[1];
   APInt mask = getVaryingBitsMask(lhs) | getVaryingBitsMask(rhs);
   APInt res = lhs.umin() ^ rhs.umin();
   APInt min = res & ~mask;
-  APInt max = res | mask;
+  APInt max = std::move(res) | mask;
   return ConstantIntRanges::fromUnsigned(min, max);
 }
 
