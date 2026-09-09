@@ -275,6 +275,8 @@ features cannot lower the translation-unit ABI level;
 
 - Clang now properly propagates attributes on class and variable templates to their redeclarations, which will result in redeclarations not interfering with diagnostics. (#GH209812)
 
+- Clang now recognizes the `[[gnu::flag_enum]]` attribute and treats it equivalent to `[[clang::flag_enum]]`
+
 ### Improvements to Clang's diagnostics
 
 - `-Wfortify-source` now diagnoses when `strlcat` or `__builtin_strlcat` is called with a size
@@ -551,6 +553,10 @@ features cannot lower the translation-unit ABI level;
 
 - Fixed an issue where `__typeof__` incorrectly rejected cv-qualified function types.
 
+- Fixed an assertion failure when `#embed` was used in the braced initializer
+  of an array new-expression, or of an array whose elements are of class type.
+  (#GH128985)
+
 - Fixed a bug where top-level CV qualifiers (such as ``const``) were dropped from pointers modified by Microsoft pointer attributes (like ``__ptr32`` and ``__ptr64``) and WebAssembly's ``__funcref``.
 
 - Fixed a bug where we accepted ``__super`` being qualified by a scope specifier, causing codegen to assertion fail elsewhere. (#GH212988)
@@ -651,6 +657,10 @@ features cannot lower the translation-unit ABI level;
   (#GH214128)
 - Fixed a crash when a coroutine keyword appeared inside a mem-initializer on a
   function that is not a constructor. (#GH194298)
+
+- Fixed an assertion when a defaulted comparison operator was synthesized for a
+  class with an invalid non-static data member, such as one qualified with an
+  address space. (#GH194605)
 
 #### Bug Fixes to AST Handling
 
