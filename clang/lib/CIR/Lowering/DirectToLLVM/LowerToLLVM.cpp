@@ -571,9 +571,7 @@ mlir::LogicalResult lowerConstrainableFPOp(
     return op->emitError("expected LLVM result type for floating-point op");
 
   if (!fenv) {
-    rewriter.replaceOpWithNewOp<LLVMOp>(
-        op, mlir::TypeRange{llvmResTy}, operands,
-        cir::getDefaultProperties<LLVMOp>(op->getContext()));
+    rewriter.replaceOpWithNewOp<LLVMOp>(op, llvmResTy, operands);
     return mlir::success();
   }
 
@@ -2484,14 +2482,11 @@ mlir::LogicalResult CIRToLLVMConstantOpLowering::matchAndRewrite(
                                    value);
   } else if (mlir::isa<cir::IntType>(op.getType())) {
     // Lower GlobalViewAttr to llvm.mlir.addressof + llvm.mlir.ptrtoint
-    if (auto ga = mlir::dyn_cast<cir::GlobalViewAttr>(op.getValue())) {
-      // We can have a global view with an integer type in the case of method
-      // pointers, but the lowering of those doesn't go through this path.
-      // They are handled in the visitCirAttr. This is left as an error until
-      // we have a test case that reaches it.
-      assert(!cir::MissingFeatures::globalViewIntLowering());
-      op.emitError() << "global view with integer type";
-      return mlir::failure();
+    if (auto gv = mlir::dyn_cast<cir::GlobalViewAttr>(op.getValue())) {
+      auto newOp = lowerCirAttrAsValue(op, gv, rewriter, symbolTables,
+                                       getTypeConverter());
+      rewriter.replaceOp(op, newOp);
+      return mlir::success();
     }
 
     attr = rewriter.getIntegerAttr(
